@@ -83,6 +83,7 @@ export default function App() {
   const [customer, setCustomer]   = useState(null);
   const [isMechanic, setIsMechanic] = useState(false);
   const [vehicle, setVehicle]     = useState(null);
+  const [vehicles, setVehicles]   = useState([]);
 
   const notificationListener = useRef(null);
   const responseListener     = useRef(null);
@@ -127,6 +128,10 @@ export default function App() {
 
       const savedCustomer = await AsyncStorage.getItem('customer_profile');
       const savedVehicle  = await AsyncStorage.getItem('vehicle_profile');
+      const savedVehicles = await AsyncStorage.getItem('vehicles_list');
+      if (savedVehicles) {
+        setVehicles(JSON.parse(savedVehicles));
+      }
 
       if (savedCustomer) {
         const c = JSON.parse(savedCustomer);
@@ -161,6 +166,15 @@ export default function App() {
   const handleVehicleSelect = async (vehicleData) => {
     setVehicle(vehicleData);
     await AsyncStorage.setItem('vehicle_profile', JSON.stringify(vehicleData));
+    // Add to vehicles list if not already there
+    const existing = await AsyncStorage.getItem('vehicles_list');
+    const list = existing ? JSON.parse(existing) : [];
+    const alreadyExists = list.some(v => v.model === vehicleData.model && v.brand === vehicleData.brand);
+    if (!alreadyExists && list.length < 3) {
+      const updated = [...list, vehicleData];
+      setVehicles(updated);
+      await AsyncStorage.setItem('vehicles_list', JSON.stringify(updated));
+    }
     setScreen('main');
   };
 
@@ -176,10 +190,16 @@ export default function App() {
     setScreen('welcome');
   };
 
+  const handleVehicleAdd = () => {
+    setScreen('vehicle');
+  };
+
   const handleVehicleChange = async (newVehicle) => {
     setVehicle(newVehicle);
     if (newVehicle) {
+      if (newVehicle) {
       await AsyncStorage.setItem('vehicle_profile', JSON.stringify(newVehicle));
+    }
     } else {
       await AsyncStorage.removeItem('vehicle_profile');
     }
@@ -220,7 +240,9 @@ export default function App() {
       customer={customer}
       isMechanic={isMechanic}
       vehicle={vehicle}
+      vehicles={vehicles}
       onVehicleChange={handleVehicleChange}
+      onVehicleAdd={handleVehicleAdd}
       onLogout={handleLogout}
     />
   );

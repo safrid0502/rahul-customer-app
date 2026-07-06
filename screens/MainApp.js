@@ -207,7 +207,7 @@ const skStyles = StyleSheet.create({
 });
 
 export default function MainApp({
-  customer, isMechanic, vehicle, onVehicleChange, onLogout
+  customer, isMechanic, vehicle, vehicles, onVehicleChange, onVehicleAdd, onLogout
 }) {
   const [tab, setTab] = useState('home');
   const [products, setProducts] = useState([]);
@@ -224,6 +224,7 @@ export default function MainApp({
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [applyPoints, setApplyPoints] = useState(false);
   const [pickupTime, setPickupTime] = useState('');
+  const [orderNote, setOrderNote] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
   const [showRating, setShowRating] = useState(false);
@@ -424,16 +425,26 @@ export default function MainApp({
     await Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Success
     );
+    const itemsList = cart.map((i, idx) =>
+      `${idx+1}. ${i.name_en}\n   SKU: ${i.sku} · Qty: ${i.qty} · ₹${((i.mechanic_price || i.selling_price) * i.qty).toFixed(0)}`
+    ).join('\n');
+
     const msg =
-      `🔔 *New Order!*\n` +
-      `${isMechanic ? '🔧 MECHANIC\n' : ''}` +
-      `👤 ${customer?.name} · +91${customer?.phone}\n` +
-      `💰 ₹${finalTotal.toFixed(0)} · 📅 ${pickupTime}\n\n` +
-      cart.map(i =>
-        `• ${i.name_en} x${i.qty} = ₹${(
-          (i.mechanic_price || i.selling_price) * i.qty
-        ).toFixed(0)}`
-      ).join('\n');
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `🏪 *NEW RAHUL AUTO SPARES*\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `📋 *NEW ORDER*${isMechanic ? ' · 🔧 MECHANIC' : ''}\n\n` +
+      `👤 *Customer:* ${customer?.name}\n` +
+      `📱 *Phone:* +91 ${customer?.phone}\n` +
+      `📅 *Pickup:* ${pickupTime}\n` +
+      (orderNote ? `📝 *Note:* ${orderNote}\n` : '') +
+      `\n` +
+      `🛒 *Items Ordered:*\n` +
+      `${itemsList}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `💰 *Total: ₹${finalTotal.toFixed(0)}*\n` +
+      (applyPoints ? `🎁 Points Used: ₹${pointsDiscount.toFixed(0)}\n` : '') +
+      `━━━━━━━━━━━━━━━━━━━━`;
 
     Alert.alert(
       '🎉 Order Confirmed!',
@@ -506,6 +517,7 @@ export default function MainApp({
             `https://wa.me/${WHATSAPP}?text=${enc}`
           );
           setCart([]);
+          setOrderNote('');
           setPickupTime('');
           setApplyPoints(false);
           setTab('orders');
@@ -734,13 +746,37 @@ export default function MainApp({
                 {vehicle && (
                   <TouchableOpacity
                     style={s.vehicleChip}
-                    onPress={() => {
-                      setTab('browse');
-                    }}
-                  >
+                    onPress={() => setTab('browse')}>
                     <Text style={s.vehicleChipText}>
-                      🏍️ {vehicle.brand} {vehicle.model} — Tap to see parts →
+                      {vehicle.brand} {vehicle.model} — Browse Parts →
                     </Text>
+                  </TouchableOpacity>
+                )}
+                {/* MULTIPLE BIKES SWITCHER */}
+                {vehicles && vehicles.length > 1 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                    style={{ marginTop: 6 }} contentContainerStyle={{ gap: 6 }}>
+                    {vehicles.map((v, i) => (
+                      <TouchableOpacity key={i}
+                        style={[s.bikeSwitch, vehicle?.model === v.model && s.bikeSwitchActive]}
+                        onPress={() => onVehicleChange(v)}>
+                        <Text style={[s.bikeSwitchText, vehicle?.model === v.model && s.bikeSwitchTextActive]}>
+                          {v.brand} {v.model}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    {vehicles.length < 3 && (
+                      <TouchableOpacity style={s.bikeAddBtn}
+                        onPress={() => onVehicleAdd && onVehicleAdd()}>
+                        <Text style={s.bikeAddBtnText}>+ Add Bike</Text>
+                      </TouchableOpacity>
+                    )}
+                  </ScrollView>
+                )}
+                {vehicles && vehicles.length === 1 && (
+                  <TouchableOpacity style={s.bikeAddBtn}
+                    onPress={() => onVehicleAdd && onVehicleAdd()}>
+                    <Text style={s.bikeAddBtnText}>+ Add Another Bike</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -1798,7 +1834,17 @@ function OrdersTab({ customer }) {
   };
 
   const active = orders.filter(o => o.status !== 'collected');
-  const displayed = filter === 'active' ? active : orders;
+  const searchFiltered = (filter === 'active' ? active : orders).filter(o => {
+    if (!orderSearch) return true;
+    const q = orderSearch.toLowerCase();
+    return (
+      (o.custom_id || '').toLowerCase().includes(q) ||
+      String(o.total_amount).includes(q) ||
+      (o.pickup_time || '').toLowerCase().includes(q) ||
+      (o.customer_name || '').toLowerCase().includes(q)
+    );
+  });
+  const displayed = searchFiltered;
   const orderId = (o) => o.custom_id || `RAS-${o.id}`;
 
   if (loading) {
@@ -1970,6 +2016,48 @@ const os = StyleSheet.create({
 // ── MAIN STYLES ──
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#07111F' },
+
+  // Order notes
+  noteBox: {
+    backgroundColor: '#0D1F3C', borderRadius: 12, padding: 14,
+    marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  },
+  noteLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 8, fontWeight: '600' },
+  noteInput: {
+    color: '#fff', fontSize: 14, minHeight: 44,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)',
+    paddingBottom: 8, textAlignVertical: 'top',
+  },
+
+  // UPI Payment
+  upiSection: {
+    backgroundColor: '#0D1F3C', borderRadius: 14, padding: 14,
+    marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  },
+  upiLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10, fontWeight: '600' },
+  upiRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  upiBtn: {
+    flex: 1, borderRadius: 10, padding: 10, alignItems: 'center',
+    borderWidth: 1.5, backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  upiBtnText: { fontWeight: '800', fontSize: 13 },
+  upiNote: { fontSize: 10, color: 'rgba(255,255,255,0.2)', textAlign: 'center' },
+
+  // Multiple bikes
+  bikeSwitch: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  bikeSwitchActive: { backgroundColor: '#C9A84C', borderColor: '#C9A84C' },
+  bikeSwitchText: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
+  bikeSwitchTextActive: { color: '#07111F', fontWeight: '800' },
+  bikeAddBtn: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.3)',
+    backgroundColor: 'rgba(201,168,76,0.06)',
+  },
+  bikeAddBtnText: { fontSize: 11, color: '#C9A84C', fontWeight: '700' },
   header: { backgroundColor: '#07111F', paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(201,168,76,0.15)' },
   headerBrand: { fontSize: 15, fontWeight: 'bold', color: '#fff', letterSpacing: 1.5, textTransform: 'uppercase' },
   offlineTag: { fontSize: 10, color: '#FFC107', marginTop: 2 },
