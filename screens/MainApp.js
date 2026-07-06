@@ -1,16 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useCallback } from 'react';
 import {
   StyleSheet, Text, View, FlatList,
   TouchableOpacity, SafeAreaView, StatusBar,
   ScrollView, TextInput, Modal, Linking,
   Alert, Share, RefreshControl, Image,
-  Animated, Dimensions
+  Animated, Dimensions, PanResponder
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import SpinWheelScreen from './SpinWheelScreen';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import CustomerProfileScreen from './CustomerProfileScreen';
 import BikeHealthScreen from './BikeHealthScreen';
-import AchievementsScreen from './AchievementsScreen';
 import ConfettiEffect from '../components/ConfettiEffect';
 import FlashDealBanner from '../components/FlashDealBanner';
 
@@ -18,26 +19,77 @@ const { width } = Dimensions.get('window');
 const API_URL = 'https://rahul-auto-spares-backend.onrender.com';
 const WHATSAPP = '916300281504';
 const STORE_UPI = 'rahulautospares@paytm';
-const PRODUCTS_KEY = 'products_cache_v2';
+const PRODUCTS_KEY = 'products_cache_v4';
 
-const getIcon = (sku) => {
-  if (!sku) return '🔩';
-  if (sku.startsWith('OIL')) return '🛢️';
-  if (sku.startsWith('SPL')) return '⚙️';
-  if (sku.startsWith('PAS')) return '🏍️';
-  if (sku.startsWith('GLA')) return '✨';
-  if (sku.startsWith('HFD')) return '🔧';
-  return '🔩';
+const getPartLabel = (sku) => {
+  if (!sku) return { label: 'PART', color: '#4F6EF7', bg: 'rgba(79,110,247,0.15)' };
+  if (sku.includes('BRK')) return { label: 'BRAKE', color: '#EF4444', bg: 'rgba(239,68,68,0.12)' };
+  if (sku.includes('AIR')) return { label: 'AIR', color: '#06B6D4', bg: 'rgba(6,182,212,0.12)' };
+  if (sku.includes('CHN')) return { label: 'CHAIN', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' };
+  if (sku.includes('SPK')) return { label: 'SPARK', color: '#8B5CF6', bg: 'rgba(139,92,246,0.12)' };
+  if (sku.includes('CLT')) return { label: 'CLUTCH', color: '#10B981', bg: 'rgba(16,185,129,0.12)' };
+  if (sku.includes('CAM')) return { label: 'CAM', color: '#F97316', bg: 'rgba(249,115,22,0.12)' };
+  if (sku.includes('SUS')) return { label: 'SUSP', color: '#6366F1', bg: 'rgba(99,102,241,0.12)' };
+  if (sku.includes('MTR')) return { label: 'METER', color: '#14B8A6', bg: 'rgba(20,184,166,0.12)' };
+  if (sku.includes('LCK')) return { label: 'LOCK', color: '#EC4899', bg: 'rgba(236,72,153,0.12)' };
+  if (sku.startsWith('OIL')) return { label: 'OIL', color: '#D97706', bg: 'rgba(217,119,6,0.12)' };
+  if (sku.includes('HRO')) return { label: 'HERO', color: '#E31837', bg: 'rgba(227,24,55,0.12)' };
+  if (sku.includes('HND')) return { label: 'HONDA', color: '#CC0000', bg: 'rgba(204,0,0,0.12)' };
+  if (sku.includes('TVS')) return { label: 'TVS', color: '#0050A0', bg: 'rgba(0,80,160,0.12)' };
+  if (sku.includes('BAJ')) return { label: 'BAJAJ', color: '#1A237E', bg: 'rgba(26,35,126,0.12)' };
+  return { label: 'PART', color: '#4F6EF7', bg: 'rgba(79,110,247,0.12)' };
 };
+const getIcon = (sku) => getPartLabel(sku).label;
 
 const CATEGORIES = [
-  { id: 'all', label: '🔩 All Parts' },
-  { id: 'OIL', label: '🛢️ Oils' },
-  { id: 'SPL', label: '⚙️ Splendor' },
-  { id: 'PAS', label: '🏍️ Passion' },
-  { id: 'GLA', label: '✨ Glamour' },
-  { id: 'HFD', label: '🔧 HF Deluxe' },
+  { id: 'all',     label: '🔩 All Parts' },
+  { id: 'OIL',     label: '🛢️ Oils' },
+  { id: 'HRO-SPL', label: '⚙️ Splendor' },
+  { id: 'HRO-PAS', label: '🏍️ Passion' },
+  { id: 'HRO-GLA', label: '✨ Glamour' },
+  { id: 'HRO-HFD', label: '🔧 HF Deluxe' },
+  { id: 'HND-CBS', label: '🔴 CB Shine' },
+  { id: 'HND-ACT', label: '🛵 Activa' },
+  { id: 'HND-DYG', label: '🟠 Dream Yuga' },
+  { id: 'TVS-APR', label: '🏁 Apache' },
+  { id: 'BAJ-P15', label: '⚡ Pulsar 150' },
+  { id: 'BAJ-PLT', label: '🔵 Platina' },
 ];
+
+const getSkuForVehicle = (v) => {
+  if (!v) return null;
+  const m = v.model?.toLowerCase();
+  const b = v.brand?.toLowerCase();
+  // Honda models
+  if (m?.includes('shine') || m?.includes('cb shine')) return 'HND-CBS';
+  if (m?.includes('activa')) return 'HND-ACT';
+  if (m?.includes('dream yuga')) return 'HND-DYG';
+  if (m?.includes('sp 125')) return 'HND-SP1';
+  if (m?.includes('unicorn')) return 'HND-UNI';
+  if (m?.includes('livo')) return 'HND-LIV';
+  if (m?.includes('hornet')) return 'HND-HRN';
+  if (m?.includes('dio')) return 'HND-DIO';
+  if (m?.includes('cb350')) return 'HND-CB3';
+  // Hero models
+  if (m?.includes('splendor+') || m?.includes('splendor plus')) return 'HRO-SPL';
+  if (m?.includes('splendor pro')) return 'HRO-SPP';
+  if (m?.includes('splendor')) return 'HRO-SPL';
+  if (m?.includes('passion')) return 'HRO-PAS';
+  if (m?.includes('glamour')) return 'HRO-GLA';
+  if (m?.includes('hf deluxe')) return 'HRO-HFD';
+  if (m?.includes('xtreme')) return 'HRO-XTR';
+  if (m?.includes('super splendor')) return 'HRO-SSP';
+  if (m?.includes('maestro')) return 'HRO-MAE';
+  if (m?.includes('destini')) return 'HRO-DES';
+  // TVS models
+  if (m?.includes('apache')) return 'TVS-APR';
+  if (m?.includes('jupiter')) return 'TVS-JPT';
+  // Bajaj models
+  if (m?.includes('pulsar 150')) return 'BAJ-P15';
+  if (m?.includes('platina')) return 'BAJ-PLT';
+  // fallback to vehicle SKU from VehicleSelectScreen
+  return v.sku || null;
+};
 
 // ── BOTTOM NAV ──
 function BottomNav({ active, onChange, cartCount, notifCount }) {
@@ -97,7 +149,7 @@ const navStyles = StyleSheet.create({
   label: {
     fontSize: 10, color: 'rgba(255,255,255,0.3)', fontWeight: '600',
   },
-  labelActive: { color: '#4F6EF7' },
+  labelActive: { color: '#C9A84C' },
   dot: {
     width: 4, height: 4, borderRadius: 2,
     backgroundColor: '#4F6EF7', marginTop: 2,
@@ -179,9 +231,8 @@ export default function MainApp({
   const [offers, setOffers] = useState([]);
 
   // ── GEN Z FEATURES STATE ──
-  const [showSpinWheel, setShowSpinWheel] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showBikeHealth, setShowBikeHealth] = useState(false);
-  const [showAchievements, setShowAchievements] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [flashDeal] = useState({
     name: 'Engine Oil 1L',
@@ -211,9 +262,11 @@ export default function MainApp({
     fetchOffers();
   }, []);
 
-  const registerPush = async () => {
-    // Push works in production APK, not Expo Go
-  };
+  // Auto-set category when vehicle is selected
+  useEffect(() => {
+    const sku = getSkuForVehicle(vehicle);
+    if (sku) setCategory(sku);
+  }, [vehicle]);
 
   const loadProducts = async () => {
     try {
@@ -388,7 +441,6 @@ export default function MainApp({
       [{
         text: 'OK 🙏',
         onPress: async () => {
-          // Confetti celebration!
           setShowConfetti(true);
           setTimeout(() => setShowConfetti(false), 3500);
 
@@ -485,8 +537,14 @@ export default function MainApp({
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const unread = notifications.filter(n => !n.read).length;
 
+  const vehicleSku = getSkuForVehicle(vehicle);
+
   const filtered = products
-    .filter(p => category === 'all' || p.sku?.startsWith(category))
+    .filter(p => {
+      if (category !== 'all') return p.sku?.startsWith(category);
+      if (vehicleSku) return p.sku?.startsWith(vehicleSku);
+      return true;
+    })
     .filter(p =>
       !search ||
       p.name_en?.toLowerCase().includes(search.toLowerCase()) ||
@@ -497,9 +555,9 @@ export default function MainApp({
     p => favorites.includes(p.id)
   );
 
-  const QUICK_ACTIONS = [
+  const QUICK_ACTIONS = [  // Professional icon labels
     {
-      icon: '🔍', label: 'Browse Parts',
+      icon: 'search', label: 'Browse Parts',
       labelTe: 'పార్ట్స్ చూడండి',
       color: '#4F6EF7', bg: 'rgba(79,110,247,0.15)',
       action: () => setTab('browse')
@@ -511,22 +569,10 @@ export default function MainApp({
       action: () => setTab('orders')
     },
     {
-      icon: '🎡', label: 'Lucky Spin',
-      labelTe: 'లక్కీ స్పిన్!',
-      color: '#FF4757', bg: 'rgba(255,71,87,0.15)',
-      action: () => setShowSpinWheel(true)
-    },
-    {
-      icon: '🏍️', label: 'Bike Health',
+      icon: 'build', label: 'Bike Health',
       labelTe: 'బైక్ హెల్త్',
       color: '#FFC107', bg: 'rgba(255,193,7,0.15)',
       action: () => setShowBikeHealth(true)
-    },
-    {
-      icon: '🏆', label: 'Achievements',
-      labelTe: 'విజయాలు',
-      color: '#A78BFA', bg: 'rgba(167,139,250,0.15)',
-      action: () => setShowAchievements(true)
     },
     {
       icon: '🏪', label: 'Store Info',
@@ -537,23 +583,15 @@ export default function MainApp({
   ];
 
   // ── GEN Z SCREENS ──
-  if (showSpinWheel) {
-    return (
-      <SpinWheelScreen
-        customer={customer}
-        onBack={() => setShowSpinWheel(false)}
-        onPointsEarned={(pts) => {
-          setLoyaltyPoints(p => p + pts);
-          addNotification({
-            type: 'spin',
-            title: '🎡 Lucky Spin!',
-            body: `You won ${pts} points!`
-          });
-        }}
-      />
-    );
-  }
-
+  if (showProfile) return (
+    <CustomerProfileScreen
+      customer={customer}
+      vehicle={vehicle}
+      loyaltyPoints={loyaltyPoints}
+      onBack={() => setShowProfile(false)}
+      onLogout={onLogout}
+    />
+  );
   if (showBikeHealth) {
     return (
       <BikeHealthScreen
@@ -562,15 +600,6 @@ export default function MainApp({
           setShowBikeHealth(false);
           setTab('browse');
         }}
-      />
-    );
-  }
-
-  if (showAchievements) {
-    return (
-      <AchievementsScreen
-        customer={customer}
-        onBack={() => setShowAchievements(false)}
       />
     );
   }
@@ -697,22 +726,27 @@ export default function MainApp({
             <View style={s.greeting}>
               <View style={{ flex: 1 }}>
                 <Text style={s.greetName}>
-                  Hi, {customer?.name?.split(' ')[0]}! 👋
+                  Hello, {customer?.name?.split(' ')[0]}
                 </Text>
                 <Text style={s.greetSub}>
                   What do you need today?
                 </Text>
                 {vehicle && (
-                  <View style={s.vehicleChip}>
+                  <TouchableOpacity
+                    style={s.vehicleChip}
+                    onPress={() => {
+                      setTab('browse');
+                    }}
+                  >
                     <Text style={s.vehicleChipText}>
-                      🏍️ {vehicle.brand} {vehicle.model}
+                      🏍️ {vehicle.brand} {vehicle.model} — Tap to see parts →
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
               </View>
               {isMechanic && (
                 <View style={s.mechBadge}>
-                  <Text style={s.mechBadgeIcon}>🔧</Text>
+                  <Ionicons name="construct" size={16} color="#FFC107" />
                   <Text style={s.mechBadgeText}>5% OFF</Text>
                 </View>
               )}
@@ -721,11 +755,11 @@ export default function MainApp({
             {/* LOYALTY CARD */}
             <TouchableOpacity
               style={s.loyaltyCard}
-              onPress={() => setShowAchievements(true)}
+              onPress={() => {}}
               activeOpacity={0.85}
             >
               <View style={s.loyaltyLeft}>
-                <Text style={s.loyaltyIcon}>💎</Text>
+                <Ionicons name="star" size={28} color="#FFC107" />
                 <View>
                   <Text style={s.loyaltyTitle}>
                     Loyalty Points
@@ -740,7 +774,7 @@ export default function MainApp({
               <View style={s.loyaltyRight}>
                 <Text style={s.loyaltyPts}>{loyaltyPoints}</Text>
                 <Text style={s.loyaltyTapHint}>
-                  View Achievements →
+                  View Rewards →
                 </Text>
               </View>
             </TouchableOpacity>
@@ -777,7 +811,7 @@ export default function MainApp({
 
             {/* QUICK ACTIONS — 6 GRID */}
             <View style={s.qaSection}>
-              <Text style={s.qaSectionTitle}>Quick Actions</Text>
+              <Text style={s.qaSectionTitle}>QUICK ACTIONS</Text>
               <View style={s.qaGrid}>
                 {QUICK_ACTIONS.map((a, i) => (
                   <TouchableOpacity
@@ -793,7 +827,7 @@ export default function MainApp({
                   >
                     <View style={[s.qaIconBox,
                       { backgroundColor: a.bg }]}>
-                      <Text style={s.qaIcon}>{a.icon}</Text>
+                      <Ionicons name={a.icon} size={24} color={a.color} />
                     </View>
                     <Text style={[s.qaLabel,
                       { color: a.color }]}>
@@ -805,37 +839,11 @@ export default function MainApp({
               </View>
             </View>
 
-            {/* GEN Z FEATURE PROMO CARDS */}
-            <View style={s.promoRow}>
-              <TouchableOpacity
-                style={[s.promoCard,
-                  { borderColor: 'rgba(255,71,87,0.4)',
-                    backgroundColor: 'rgba(255,71,87,0.06)' }]}
-                onPress={() => setShowSpinWheel(true)}
-              >
-                <Text style={s.promoIcon}>🎡</Text>
-                <Text style={s.promoTitle}>Spin & Win!</Text>
-                <Text style={s.promoSub}>
-                  Points or discounts!
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.promoCard,
-                  { borderColor: 'rgba(255,193,7,0.4)',
-                    backgroundColor: 'rgba(255,193,7,0.06)' }]}
-                onPress={() => setShowBikeHealth(true)}
-              >
-                <Text style={s.promoIcon}>🏍️</Text>
-                <Text style={s.promoTitle}>Bike Health</Text>
-                <Text style={s.promoSub}>
-                  Free diagnosis!
-                </Text>
-              </TouchableOpacity>
-            </View>
+
 
             {/* POPULAR PARTS */}
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>⭐ Popular Parts</Text>
+              <Text style={s.sectionTitle}>Popular Parts</Text>
               <TouchableOpacity onPress={() => setTab('browse')}>
                 <Text style={s.seeAll}>See All →</Text>
               </TouchableOpacity>
@@ -855,13 +863,17 @@ export default function MainApp({
                     style={s.miniHeart}
                     onPress={() => toggleFavorite(item.id)}
                   >
-                    <Text>
-                      {favorites.includes(item.id) ? '❤️' : '🤍'}
-                    </Text>
+                    <Ionicons 
+                      name={favorites.includes(item.id) ? 'heart' : 'heart-outline'}
+                      size={18} 
+                      color={favorites.includes(item.id) ? '#EF4444' : 'rgba(255,255,255,0.3)'}
+                    />
                   </TouchableOpacity>
-                  <Text style={s.miniCardIcon}>
-                    {getIcon(item.sku)}
-                  </Text>
+                  <View style={[s.miniCardIconBox, { backgroundColor: getPartLabel(item.sku).bg }]}>
+                    <Text style={[s.miniCardIconText, { color: getPartLabel(item.sku).color }]}>
+                      {getPartLabel(item.sku).label}
+                    </Text>
+                  </View>
                   <Text style={s.miniCardName} numberOfLines={2}>
                     {item.name_en}
                   </Text>
@@ -962,9 +974,21 @@ export default function MainApp({
                 />
               }
               ListHeaderComponent={() => (
-                <Text style={s.countText}>
-                  {filtered.length} products found
-                </Text>
+                <View style={s.browseHeader}>
+                  <Text style={s.countText}>
+                    {filtered.length} products found
+                  </Text>
+                  {vehicle && category === 'all' && vehicleSku && (
+                    <View style={s.vehicleFilterBadge}>
+                      <Text style={s.vehicleFilterText}>
+                        🏍️ {vehicle.brand} {vehicle.model}
+                      </Text>
+                      <TouchableOpacity onPress={() => setCategory('all')}>
+                        <Text style={s.clearVehicle}> ✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               )}
               ListEmptyComponent={() => (
                 <View style={s.emptyBox}>
@@ -1208,7 +1232,7 @@ export default function MainApp({
                   }}
                 >
                   <Text style={s.loyaltyToggleText}>
-                    💎 Use {loyaltyPoints} points
+                    🎁 Use {loyaltyPoints} points
                     = ₹{Math.min(
                       loyaltyPoints,
                       Math.floor(cartTotal * 0.5)
@@ -1264,7 +1288,7 @@ export default function MainApp({
                 {pointsDiscount > 0 && (
                   <View style={s.summaryRow}>
                     <Text style={s.summaryLabel}>
-                      💎 Points Discount
+                      🎁 Points Discount
                     </Text>
                     <Text style={[s.summaryValue,
                       { color: '#4ADE80' }]}>
@@ -1287,7 +1311,7 @@ export default function MainApp({
                 disabled={!pickupTime}
               >
                 <Text style={s.orderBtnText}>
-                  🔥 Place Order · ₹{finalTotal.toFixed(0)}
+                  ✅ Place Order · ₹{finalTotal.toFixed(0)}
                 </Text>
               </TouchableOpacity>
 
@@ -1335,6 +1359,23 @@ export default function MainApp({
         {/* ══ STORE TAB ══ */}
         {tab === 'store' && (
           <ScrollView contentContainerStyle={{ padding: 20 }}>
+
+            {/* PROFILE BUTTON */}
+            <TouchableOpacity
+              style={s.profileBtn}
+              onPress={() => setShowProfile(true)}>
+              <View style={s.profileBtnAvatar}>
+                <Text style={s.profileBtnAvatarText}>
+                  {(customer?.name || '?')[0].toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.profileBtnName}>{customer?.name}</Text>
+                <Text style={s.profileBtnPhone}>+91 {customer?.phone}</Text>
+              </View>
+              <Text style={s.profileBtnArrow}>✏️ Edit Profile →</Text>
+            </TouchableOpacity>
+
             <View style={s.storeCard}>
               <Text style={s.storeIcon}>🏪</Text>
               <Text style={s.storeName}>
@@ -1371,21 +1412,11 @@ export default function MainApp({
               </TouchableOpacity>
             ))}
 
-            {/* GEN Z FEATURE BUTTONS IN STORE TAB */}
             <View style={s.storeFeatures}>
               <Text style={s.storeFeatTitle}>
-                🔥 Try These Features!
+                ⭐ Features
               </Text>
-              <TouchableOpacity
-                style={s.storeFeatureBtn}
-                onPress={() => setShowSpinWheel(true)}
-              >
-                <Text style={s.storeFeatureBtnIcon}>🎡</Text>
-                <Text style={s.storeFeatureBtnText}>
-                  Lucky Spin Wheel
-                </Text>
-                <Text style={s.storeFeatureBtnArrow}>→</Text>
-              </TouchableOpacity>
+              
               <TouchableOpacity
                 style={s.storeFeatureBtn}
                 onPress={() => setShowBikeHealth(true)}
@@ -1396,16 +1427,7 @@ export default function MainApp({
                 </Text>
                 <Text style={s.storeFeatureBtnArrow}>→</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={s.storeFeatureBtn}
-                onPress={() => setShowAchievements(true)}
-              >
-                <Text style={s.storeFeatureBtnIcon}>🏆</Text>
-                <Text style={s.storeFeatureBtnText}>
-                  View Achievements
-                </Text>
-                <Text style={s.storeFeatureBtnArrow}>→</Text>
-              </TouchableOpacity>
+              
             </View>
           </ScrollView>
         )}
@@ -1745,22 +1767,10 @@ function OrdersTab({ customer }) {
   const API_URL = 'https://rahul-auto-spares-backend.onrender.com';
 
   const STATUS_STEPS = [
-    {
-      key: 'new', label: 'Placed', icon: '📋',
-      color: '#4F6EF7'
-    },
-    {
-      key: 'packing', label: 'Packing', icon: '📦',
-      color: '#FFC107'
-    },
-    {
-      key: 'ready', label: 'Ready!', icon: '✅',
-      color: '#4ADE80'
-    },
-    {
-      key: 'collected', label: 'Done', icon: '🏁',
-      color: 'rgba(255,255,255,0.3)'
-    },
+    { key: 'new', label: 'Placed', icon: '📋', color: '#4F6EF7' },
+    { key: 'packing', label: 'Packing', icon: '📦', color: '#FFC107' },
+    { key: 'ready', label: 'Ready!', icon: '✅', color: '#4ADE80' },
+    { key: 'collected', label: 'Done', icon: '🏁', color: 'rgba(255,255,255,0.3)' },
   ];
 
   const getStepIndex = (status) => {
@@ -1808,12 +1818,10 @@ function OrdersTab({ customer }) {
         ].map(f => (
           <TouchableOpacity
             key={f.id}
-            style={[os.filterBtn,
-              filter === f.id && os.filterBtnActive]}
+            style={[os.filterBtn, filter === f.id && os.filterBtnActive]}
             onPress={() => setFilter(f.id)}
           >
-            <Text style={[os.filterText,
-              filter === f.id && os.filterTextActive]}>
+            <Text style={[os.filterText, filter === f.id && os.filterTextActive]}>
               {f.label}
             </Text>
           </TouchableOpacity>
@@ -1822,13 +1830,9 @@ function OrdersTab({ customer }) {
 
       {displayed.length === 0 ? (
         <View style={os.centerBox}>
-          <Text style={{ fontSize: 48, marginBottom: 12 }}>
-            📋
-          </Text>
+          <Text style={{ fontSize: 48, marginBottom: 12 }}>📋</Text>
           <Text style={os.emptyText}>
-            {filter === 'active'
-              ? 'No active orders!'
-              : 'No orders yet!'}
+            {filter === 'active' ? 'No active orders!' : 'No orders yet!'}
           </Text>
         </View>
       ) : (
@@ -1853,9 +1857,7 @@ function OrdersTab({ customer }) {
               <View key={order.id} style={os.orderCard}>
                 <View style={os.orderHeader}>
                   <View>
-                    <Text style={os.orderId}>
-                      {orderId(order)}
-                    </Text>
+                    <Text style={os.orderId}>{orderId(order)}</Text>
                     <Text style={os.orderPickup}>
                       📅 {order.pickup_time || '—'}
                     </Text>
@@ -1867,12 +1869,9 @@ function OrdersTab({ customer }) {
                     {order.status === 'ready' && (
                       <TouchableOpacity
                         style={os.callBtn}
-                        onPress={() =>
-                          Linking.openURL('tel:08514244944')}
+                        onPress={() => Linking.openURL('tel:08514244944')}
                       >
-                        <Text style={os.callBtnText}>
-                          📞 Call
-                        </Text>
+                        <Text style={os.callBtnText}>📞 Call</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1886,7 +1885,6 @@ function OrdersTab({ customer }) {
                   </View>
                 )}
 
-                {/* TIMELINE */}
                 <View style={os.timeline}>
                   {STATUS_STEPS.map((step, i) => {
                     const done = i < currentStep;
@@ -1896,33 +1894,20 @@ function OrdersTab({ customer }) {
                       <View key={step.key} style={os.step}>
                         {i > 0 && (
                           <View style={[os.stepLine,
-                            done && {
-                              backgroundColor: step.color
-                            }]} />
+                            done && { backgroundColor: step.color }]} />
                         )}
                         <View style={[os.stepIcon,
-                          done && {
-                            backgroundColor: step.color + '20',
-                            borderColor: step.color
-                          },
-                          current && {
-                            backgroundColor: step.color + '20',
-                            borderColor: step.color
-                          },
-                          pending && {
-                            borderColor: 'rgba(255,255,255,0.1)'
-                          }]}>
-                          <Text style={[os.stepEmoji,
-                            pending && { opacity: 0.2 }]}>
+                          done && { backgroundColor: step.color + '20', borderColor: step.color },
+                          current && { backgroundColor: step.color + '20', borderColor: step.color },
+                          pending && { borderColor: 'rgba(255,255,255,0.1)' }]}>
+                          <Text style={[os.stepEmoji, pending && { opacity: 0.2 }]}>
                             {done ? '✓' : step.icon}
                           </Text>
                         </View>
                         <Text style={[os.stepLabel,
                           done && { color: '#4ADE80' },
                           current && { color: step.color },
-                          pending && {
-                            color: 'rgba(255,255,255,0.2)'
-                          }]}>
+                          pending && { color: 'rgba(255,255,255,0.2)' }]}>
                           {step.label}
                         </Text>
                       </View>
@@ -1930,12 +1915,9 @@ function OrdersTab({ customer }) {
                   })}
                 </View>
 
-                {/* QR CODE */}
                 {order.status !== 'collected' && (
                   <View style={os.qrSection}>
-                    <Text style={os.qrTitle}>
-                      📱 Show QR at Pickup
-                    </Text>
+                    <Text style={os.qrTitle}>📱 Show QR at Pickup</Text>
                     <Image
                       source={{ uri: qrUrl }}
                       style={os.qrImage}
@@ -1955,708 +1937,253 @@ function OrdersTab({ customer }) {
 }
 
 const os = StyleSheet.create({
-  centerBox: {
-    flex: 1, alignItems: 'center',
-    justifyContent: 'center', padding: 40,
-  },
+  centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   loadingText: { color: 'rgba(255,255,255,0.4)', fontSize: 14 },
-  emptyText: {
-    fontSize: 16, color: 'rgba(255,255,255,0.4)',
-    textAlign: 'center',
-  },
-  filterRow: {
-    flexDirection: 'row', padding: 12, gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(79,110,247,0.15)',
-  },
-  filterBtn: {
-    flex: 1, paddingVertical: 8, borderRadius: 10,
-    alignItems: 'center', borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.2)',
-  },
-  filterBtnActive: {
-    backgroundColor: '#4F6EF7', borderColor: '#4F6EF7',
-  },
-  filterText: {
-    fontSize: 13, color: 'rgba(255,255,255,0.4)',
-    fontWeight: '700',
-  },
+  emptyText: { fontSize: 16, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
+  filterRow: { flexDirection: 'row', padding: 12, gap: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(79,110,247,0.15)' },
+  filterBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)' },
+  filterBtnActive: { backgroundColor: '#4F6EF7', borderColor: '#4F6EF7' },
+  filterText: { fontSize: 13, color: 'rgba(255,255,255,0.4)', fontWeight: '700' },
   filterTextActive: { color: '#fff' },
-  orderCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 16,
-    padding: 16, marginBottom: 14, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.2)',
-  },
-  orderHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  orderId: {
-    fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 4,
-  },
+  orderCard: { backgroundColor: '#0E0E1C', borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)' },
+  orderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
+  orderId: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
   orderPickup: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
   orderRight: { alignItems: 'flex-end', gap: 6 },
-  orderAmount: {
-    fontSize: 20, fontWeight: 'bold', color: '#FFC107',
-  },
-  callBtn: {
-    backgroundColor: '#4ADE80', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  callBtnText: {
-    color: '#06060E', fontWeight: 'bold', fontSize: 12,
-  },
-  readyBanner: {
-    backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 10,
-    padding: 10, marginBottom: 14, borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.3)',
-  },
-  readyText: {
-    color: '#4ADE80', fontWeight: 'bold', fontSize: 13,
-  },
+  orderAmount: { fontSize: 20, fontWeight: 'bold', color: '#FFC107' },
+  callBtn: { backgroundColor: '#4ADE80', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
+  callBtnText: { color: '#06060E', fontWeight: 'bold', fontSize: 12 },
+  readyBanner: { backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 10, padding: 10, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)' },
+  readyText: { color: '#4ADE80', fontWeight: 'bold', fontSize: 13 },
   timeline: { flexDirection: 'row', marginBottom: 14 },
   step: { flex: 1, alignItems: 'center', position: 'relative' },
-  stepLine: {
-    position: 'absolute', top: 18, right: '50%',
-    left: '-50%', height: 2,
-    backgroundColor: 'rgba(79,110,247,0.1)',
-  },
-  stepIcon: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6, zIndex: 1, borderWidth: 2,
-    borderColor: 'rgba(79,110,247,0.2)',
-    backgroundColor: '#0E0E1C',
-  },
+  stepLine: { position: 'absolute', top: 18, right: '50%', left: '-50%', height: 2, backgroundColor: 'rgba(79,110,247,0.1)' },
+  stepIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 6, zIndex: 1, borderWidth: 2, borderColor: 'rgba(79,110,247,0.2)', backgroundColor: '#0E0E1C' },
   stepEmoji: { fontSize: 14 },
-  stepLabel: {
-    fontSize: 9, fontWeight: 'bold', color: '#fff',
-    textAlign: 'center',
-  },
-  qrSection: {
-    alignItems: 'center', paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(79,110,247,0.15)',
-  },
-  qrTitle: {
-    fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10,
-  },
-  qrImage: {
-    width: 140, height: 140, borderRadius: 8, marginBottom: 8
-  },
-  qrId: {
-    fontSize: 16, fontWeight: 'bold', color: '#4F6EF7',
-    letterSpacing: 2,
-  },
+  stepLabel: { fontSize: 9, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
+  qrSection: { alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(79,110,247,0.15)' },
+  qrTitle: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 10 },
+  qrImage: { width: 140, height: 140, borderRadius: 8, marginBottom: 8 },
+  qrId: { fontSize: 16, fontWeight: 'bold', color: '#4F6EF7', letterSpacing: 2 },
 });
 
 // ── MAIN STYLES ──
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#06060E' },
-  header: {
-    backgroundColor: '#0E0E1C', paddingHorizontal: 16,
-    paddingVertical: 12, flexDirection: 'row', alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(79,110,247,0.15)',
-  },
-  headerBrand: {
-    fontSize: 13, fontWeight: 'bold', color: '#fff', letterSpacing: 1,
-  },
+  container: { flex: 1, backgroundColor: '#07111F' },
+  header: { backgroundColor: '#07111F', paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(201,168,76,0.15)' },
+  headerBrand: { fontSize: 15, fontWeight: 'bold', color: '#fff', letterSpacing: 1.5, textTransform: 'uppercase' },
   offlineTag: { fontSize: 10, color: '#FFC107', marginTop: 2 },
-  headerRight: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-  },
-  mechanicTag: {
-    backgroundColor: 'rgba(255,193,7,0.15)', borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.3)',
-  },
-  mechanicTagText: {
-    color: '#FFC107', fontSize: 10, fontWeight: 'bold',
-  },
-  pointsTag: {
-    backgroundColor: 'rgba(255,193,7,0.1)', borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.2)',
-  },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mechanicTag: { backgroundColor: 'rgba(255,193,7,0.15)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(255,193,7,0.3)' },
+  mechanicTagText: { color: '#FFC107', fontSize: 10, fontWeight: 'bold' },
+  pointsTag: { backgroundColor: 'rgba(255,193,7,0.1)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(255,193,7,0.2)' },
   pointsTagText: { color: '#FFC107', fontSize: 10 },
   notifBtn: { position: 'relative', padding: 4 },
   notifIcon: { fontSize: 20 },
-  notifBadge: {
-    position: 'absolute', top: 0, right: 0,
-    backgroundColor: '#FF4757', borderRadius: 6,
-    minWidth: 14, height: 14, alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notifBadgeText: {
-    color: '#fff', fontSize: 8, fontWeight: 'bold',
-  },
-  exitBtn: {
-    backgroundColor: 'rgba(255,71,87,0.1)', borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1,
-    borderColor: 'rgba(255,71,87,0.2)',
-  },
+  notifBadge: { position: 'absolute', top: 0, right: 0, backgroundColor: '#FF4757', borderRadius: 6, minWidth: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
+  notifBadgeText: { color: '#fff', fontSize: 8, fontWeight: 'bold' },
+  exitBtn: { backgroundColor: 'rgba(255,71,87,0.1)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(255,71,87,0.2)' },
   exitText: { color: '#FF4757', fontSize: 11, fontWeight: 'bold' },
-  searchBox: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#0E0E1C', margin: 10, borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.2)', gap: 10,
-  },
+  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0D1F3C', margin: 12, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: 10 },
   searchIcon: { fontSize: 16 },
   searchInput: { flex: 1, color: '#fff', fontSize: 14 },
   clearBtn: { color: 'rgba(255,255,255,0.3)', fontSize: 16 },
   catScroll: { maxHeight: 46 },
-  catRow: {
-    paddingHorizontal: 12, paddingBottom: 8, gap: 8,
-    flexDirection: 'row', alignItems: 'center',
-  },
-  catChip: {
-    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)',
-    backgroundColor: 'rgba(79,110,247,0.06)',
-  },
-  catChipActive: {
-    backgroundColor: '#4F6EF7', borderColor: '#4F6EF7',
-  },
-  catChipText: {
-    fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: '700',
-  },
-  catChipTextActive: { color: '#fff' },
-  greeting: {
-    padding: 20, flexDirection: 'row', alignItems: 'flex-start',
-  },
-  greetName: {
-    fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 4,
-  },
-  greetSub: {
-    fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 10,
-  },
-  vehicleChip: {
-    backgroundColor: 'rgba(79,110,247,0.1)', borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 5,
-    alignSelf: 'flex-start', borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.2)',
-  },
-  vehicleChipText: {
-    color: '#4F6EF7', fontSize: 12, fontWeight: 'bold',
-  },
-  mechBadge: {
-    backgroundColor: 'rgba(255,193,7,0.1)', borderRadius: 12,
-    padding: 10, alignItems: 'center', borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.2)',
-  },
+  catRow: { paddingHorizontal: 12, paddingBottom: 8, gap: 8, flexDirection: 'row', alignItems: 'center' },
+  catChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: '#0D1F3C' },
+  catChipActive: { backgroundColor: '#C9A84C', borderColor: '#C9A84C' },
+  catChipText: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: '600', letterSpacing: 0.3 },
+  catChipTextActive: { color: '#07111F', fontWeight: '700' },
+  greeting: { padding: 20, paddingBottom: 16, flexDirection: 'row', alignItems: 'flex-start', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  greetName: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
+  greetSub: { fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 10 },
+  vehicleChip: { backgroundColor: 'rgba(79,110,247,0.1)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, alignSelf: 'flex-start', borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)' },
+  vehicleChipText: { color: '#C9A84C', fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
+  mechBadge: { backgroundColor: 'rgba(255,193,7,0.1)', borderRadius: 12, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,193,7,0.2)' },
   mechBadgeIcon: { fontSize: 24 },
-  mechBadgeText: {
-    color: '#FFC107', fontSize: 10, fontWeight: 'bold',
-  },
-  loyaltyCard: {
-    marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: 'rgba(255,193,7,0.06)', borderRadius: 16,
-    padding: 16, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.2)',
-  },
-  loyaltyLeft: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
+  mechBadgeText: { color: '#FFC107', fontSize: 10, fontWeight: 'bold' },
+  loyaltyCard: { marginHorizontal: 16, marginBottom: 16, backgroundColor: '#0D1F3C', borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(201,168,76,0.25)' },
+  loyaltyLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   loyaltyIcon: { fontSize: 28 },
-  loyaltyTitle: {
-    fontSize: 14, fontWeight: 'bold', color: '#FFC107',
-  },
+  loyaltyTitle: { fontSize: 14, fontWeight: 'bold', color: '#FFC107' },
   loyaltyHint: { fontSize: 11, color: 'rgba(255,255,255,0.4)' },
   loyaltyRight: { alignItems: 'flex-end' },
-  loyaltyPts: {
-    fontSize: 36, fontWeight: 'bold', color: '#FFC107',
-  },
-  loyaltyTapHint: {
-    fontSize: 9, color: 'rgba(255,193,7,0.5)', marginTop: 2,
-  },
+  loyaltyPts: { fontSize: 36, fontWeight: 'bold', color: '#FFC107' },
+  loyaltyTapHint: { fontSize: 9, color: 'rgba(255,193,7,0.5)', marginTop: 2 },
   offersRow: { paddingHorizontal: 16, paddingBottom: 8, gap: 10 },
-  offerCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: 'rgba(255,193,7,0.06)', borderRadius: 14,
-    padding: 12, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.2)', minWidth: 200,
-  },
+  offerCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,193,7,0.06)', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: 'rgba(255,193,7,0.2)', minWidth: 200 },
   offerEmoji: { fontSize: 24 },
-  offerTitle: {
-    fontSize: 13, fontWeight: 'bold', color: '#FFC107',
-  },
-  offerBadge: {
-    backgroundColor: '#FFC107', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2, marginTop: 4,
-    alignSelf: 'flex-start',
-  },
-  offerBadgeText: {
-    fontSize: 10, color: '#06060E', fontWeight: 'bold',
-  },
+  offerTitle: { fontSize: 13, fontWeight: 'bold', color: '#FFC107' },
+  offerBadge: { backgroundColor: '#FFC107', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 4, alignSelf: 'flex-start' },
+  offerBadgeText: { fontSize: 10, color: '#06060E', fontWeight: 'bold' },
   qaSection: { paddingHorizontal: 16, marginBottom: 4 },
-  qaSectionTitle: {
-    fontSize: 13, color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 2, marginBottom: 12, textTransform: 'uppercase',
-  },
-  qaGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10,
-    marginBottom: 16,
-  },
-  qaCard: {
-    width: (width - 52) / 3,
-    backgroundColor: '#0E0E1C', borderRadius: 16,
-    padding: 12, alignItems: 'center', gap: 6, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.12)',
-  },
-  qaIconBox: {
-    width: 46, height: 46, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  qaSectionTitle: { fontSize: 13, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, marginBottom: 12, textTransform: 'uppercase' },
+  qaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  qaCard: { width: (width - 52) / 3, backgroundColor: '#0D1F3C', borderRadius: 12, padding: 14, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  qaIconBox: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   qaIcon: { fontSize: 24 },
-  qaLabel: {
-    fontSize: 11, fontWeight: 'bold', textAlign: 'center',
-  },
-  qaLabelTe: {
-    fontSize: 8, color: 'rgba(255,255,255,0.25)',
-    textAlign: 'center',
-  },
-  promoRow: {
-    flexDirection: 'row', paddingHorizontal: 16,
-    gap: 10, marginBottom: 16,
-  },
-  promoCard: {
-    flex: 1, borderRadius: 16, padding: 16,
-    alignItems: 'center', gap: 4, borderWidth: 1,
-  },
+  qaLabel: { fontSize: 11, fontWeight: 'bold', textAlign: 'center' },
+  qaLabelTe: { fontSize: 8, color: 'rgba(255,255,255,0.25)', textAlign: 'center' },
+  promoRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 16 },
+  promoCard: { flex: 1, borderRadius: 16, padding: 16, alignItems: 'center', gap: 4, borderWidth: 1 },
   promoIcon: { fontSize: 32, marginBottom: 4 },
-  promoTitle: {
-    fontSize: 14, fontWeight: 'bold', color: '#fff',
-  },
+  promoTitle: { fontSize: 14, fontWeight: 'bold', color: '#fff' },
   promoSub: { fontSize: 11, color: 'rgba(255,255,255,0.4)' },
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 16, fontWeight: 'bold', color: '#fff',
-  },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.9)', letterSpacing: 1.5, textTransform: 'uppercase' },
   seeAll: { fontSize: 13, color: '#4F6EF7', fontWeight: 'bold' },
   hScroll: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
-  miniCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 12,
-    width: 130, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)', position: 'relative',
-  },
+  miniCard: { backgroundColor: '#0D1F3C', borderRadius: 12, padding: 14, width: 140, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', position: 'relative' },
   miniHeart: { position: 'absolute', top: 8, right: 8 },
   miniCardIcon: { fontSize: 30, marginBottom: 8, marginTop: 8 },
-  miniCardName: {
-    fontSize: 12, fontWeight: 'bold', color: '#fff',
-    marginBottom: 4, lineHeight: 16,
-  },
-  miniCardMrp: {
-    fontSize: 10, color: 'rgba(255,255,255,0.25)',
-    textDecorationLine: 'line-through',
-  },
-  miniCardPrice: {
-    fontSize: 16, fontWeight: 'bold', color: '#FFC107',
-    marginBottom: 8,
-  },
-  miniAddBtn: {
-    backgroundColor: '#4F6EF7', borderRadius: 8,
-    padding: 6, alignItems: 'center',
-  },
+  miniCardName: { fontSize: 12, fontWeight: 'bold', color: '#fff', marginBottom: 4, lineHeight: 16 },
+  miniCardMrp: { fontSize: 10, color: 'rgba(255,255,255,0.25)', textDecorationLine: 'line-through' },
+  miniCardPrice: { fontSize: 16, fontWeight: 'bold', color: '#FFC107', marginBottom: 8 },
+  miniAddBtn: { backgroundColor: '#4F6EF7', borderRadius: 8, padding: 6, alignItems: 'center' },
   miniAddText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  hoursCard: {
-    margin: 16, backgroundColor: '#0E0E1C', borderRadius: 16,
-    padding: 16, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)',
-  },
-  hoursTitle: {
-    fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 12,
-  },
-  hoursRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: 8, borderBottomWidth: 1,
-    borderBottomColor: 'rgba(79,110,247,0.08)',
-  },
+  hoursCard: { margin: 16, backgroundColor: '#0E0E1C', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
+  hoursTitle: { fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 12 },
+  hoursRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(79,110,247,0.08)' },
   hoursDay: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
   hoursTime: { fontSize: 13, color: '#fff', fontWeight: '600' },
-  callBtn: {
-    marginTop: 12, backgroundColor: 'rgba(74,222,128,0.1)',
-    borderRadius: 12, padding: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
-  },
-  callBtnText: {
-    color: '#4ADE80', fontSize: 14, fontWeight: 'bold',
-  },
-  countText: {
-    fontSize: 11, color: 'rgba(255,255,255,0.25)', paddingBottom: 8,
-  },
-  productCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14,
-    flexDirection: 'row', alignItems: 'center', borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)', marginBottom: 8, gap: 10,
-  },
-  productLeft: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
-  productIconBox: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: 'rgba(79,110,247,0.08)', alignItems: 'center',
-    justifyContent: 'center', borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.12)',
-  },
-  productIconText: { fontSize: 22 },
-  productName: {
-    fontSize: 13, fontWeight: 'bold', color: '#fff', marginBottom: 2,
-  },
-  productNameTe: {
-    fontSize: 10, color: 'rgba(79,110,247,0.5)', marginBottom: 2,
-  },
-  productSku: {
-    fontSize: 9, color: 'rgba(79,110,247,0.5)',
-    letterSpacing: 1, marginBottom: 4,
-  },
-  stockBadge: {
-    backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-    alignSelf: 'flex-start', borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.2)',
-  },
-  stockBadgeOut: {
-    backgroundColor: 'rgba(255,71,87,0.08)',
-    borderColor: 'rgba(255,71,87,0.2)',
-  },
+  callBtn: { marginTop: 12, backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)' },
+  callBtnText: { color: '#4ADE80', fontSize: 14, fontWeight: 'bold' },
+  browseHeader: { marginBottom: 8 },
+  countText: { fontSize: 11, color: 'rgba(255,255,255,0.25)', paddingBottom: 4 },
+  vehicleFilterBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(79,110,247,0.1)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, alignSelf: 'flex-start', borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)', marginBottom: 8 },
+  vehicleFilterText: { color: '#4F6EF7', fontSize: 12, fontWeight: 'bold' },
+  clearVehicle: { color: '#FF4757', fontSize: 12, fontWeight: 'bold' },
+  productCard: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)', marginBottom: 8, gap: 10 },
+  productLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  productIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(79,110,247,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(79,110,247,0.12)' },
+  productIconText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  productName: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 3, lineHeight: 18 },
+  productNameTe: { fontSize: 10, color: 'rgba(79,110,247,0.5)', marginBottom: 2 },
+  productSku: { fontSize: 9, color: 'rgba(79,110,247,0.5)', letterSpacing: 1, marginBottom: 4 },
+  stockBadge: { backgroundColor: 'rgba(74,222,128,0.08)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
+  stockBadgeOut: { backgroundColor: 'rgba(255,71,87,0.08)', borderColor: 'rgba(255,71,87,0.2)' },
   stockText: { fontSize: 9, color: '#4ADE80' },
   stockTextOut: { color: '#FF4757' },
   productRight: { alignItems: 'flex-end', gap: 4 },
-  productMrp: {
-    fontSize: 10, color: 'rgba(255,255,255,0.25)',
-    textDecorationLine: 'line-through',
-  },
-  productPrice: {
-    fontSize: 17, fontWeight: 'bold', color: '#FFC107',
-  },
+  productMrp: { fontSize: 10, color: 'rgba(255,255,255,0.25)', textDecorationLine: 'line-through' },
+  productPrice: { fontSize: 17, fontWeight: 'bold', color: '#FFC107' },
   mechDiscount: { fontSize: 9, color: '#FFC107' },
-  addBtn: {
-    backgroundColor: '#4F6EF7', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  addBtnText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  emptyBox: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    padding: 40, gap: 12,
-  },
-  emptyText: {
-    fontSize: 16, color: 'rgba(255,255,255,0.4)',
-    fontWeight: 'bold',
-  },
+  addBtn: { backgroundColor: '#4F6EF7', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  addBtnText: { color: '#07111F', fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
+  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
+  emptyText: { fontSize: 16, color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' },
   clearSearchText: { color: '#4F6EF7', fontWeight: 'bold' },
-  browseBtn: {
-    backgroundColor: 'rgba(79,110,247,0.1)', borderRadius: 14,
-    paddingHorizontal: 20, paddingVertical: 12, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.2)',
-  },
+  browseBtn: { backgroundColor: 'rgba(79,110,247,0.1)', borderRadius: 14, paddingHorizontal: 20, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)' },
   browseBtnText: { color: '#4F6EF7', fontWeight: 'bold' },
-  cartCustomer: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14,
-    marginBottom: 12, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)',
-  },
-  cartCustomerName: {
-    fontSize: 15, fontWeight: 'bold', color: '#fff', marginBottom: 2,
-  },
-  cartCustomerPhone: {
-    fontSize: 12, color: 'rgba(255,255,255,0.4)',
-  },
-  cartItem: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14,
-    flexDirection: 'row', alignItems: 'center', borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)', marginBottom: 8, gap: 10,
-  },
+  cartCustomer: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
+  cartCustomerName: { fontSize: 15, fontWeight: 'bold', color: '#fff', marginBottom: 2 },
+  cartCustomerPhone: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
+  cartItem: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)', marginBottom: 8, gap: 10 },
   cartItemIcon: { fontSize: 26 },
-  cartItemName: {
-    fontSize: 13, fontWeight: 'bold', color: '#fff', marginBottom: 8,
-  },
-  cartItemPrice: {
-    fontSize: 18, fontWeight: 'bold', color: '#FFC107',
-  },
+  cartItemName: { fontSize: 13, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
+  cartItemPrice: { fontSize: 18, fontWeight: 'bold', color: '#FFC107' },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  qtySelector: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: 12, marginBottom: 16,
-  },
-  qtyBtn: {
-    width: 36, height: 36, backgroundColor: '#0E0E1C',
-    borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(79,110,247,0.3)',
-  },
-  qtyBtnText: {
-    fontSize: 18, color: '#4F6EF7', fontWeight: 'bold',
-  },
+  qtySelector: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  qtyBtn: { width: 36, height: 36, backgroundColor: '#0E0E1C', borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(79,110,247,0.3)' },
+  qtyBtnText: { fontSize: 18, color: '#4F6EF7', fontWeight: 'bold' },
   qtyNum: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   qtyTotal: { fontSize: 16, color: '#FFC107', fontWeight: 'bold' },
-  loyaltyToggle: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,193,7,0.05)', borderRadius: 14,
-    padding: 14, marginBottom: 10, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.2)',
-  },
-  loyaltyToggleOn: {
-    backgroundColor: 'rgba(74,222,128,0.06)',
-    borderColor: 'rgba(74,222,128,0.3)',
-  },
-  loyaltyToggleText: {
-    fontSize: 13, color: '#FFC107', fontWeight: 'bold', flex: 1,
-  },
-  toggleSwitch: {
-    width: 44, height: 24, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center', padding: 2,
-  },
+  loyaltyToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,193,7,0.05)', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,193,7,0.2)' },
+  loyaltyToggleOn: { backgroundColor: 'rgba(74,222,128,0.06)', borderColor: 'rgba(74,222,128,0.3)' },
+  loyaltyToggleText: { fontSize: 13, color: '#FFC107', fontWeight: 'bold', flex: 1 },
+  toggleSwitch: { width: 44, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', padding: 2 },
   toggleSwitchOn: { backgroundColor: '#4ADE80' },
-  toggleKnob: {
-    width: 18, height: 18, borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    alignSelf: 'flex-start',
-  },
+  toggleKnob: { width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.3)', alignSelf: 'flex-start' },
   toggleKnobOn: { backgroundColor: '#fff', alignSelf: 'flex-end' },
-  pickupCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14,
-    marginBottom: 10, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)',
-  },
-  pickupTitle: {
-    fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 12,
-  },
+  pickupCard: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
+  pickupTitle: { fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 12 },
   pickupOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  pickupChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)',
-  },
-  pickupChipActive: {
-    backgroundColor: '#4F6EF7', borderColor: '#4F6EF7',
-  },
-  pickupChipText: {
-    fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: '600',
-  },
+  pickupChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)' },
+  pickupChipActive: { backgroundColor: '#4F6EF7', borderColor: '#4F6EF7' },
+  pickupChipText: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: '600' },
   pickupChipTextActive: { color: '#fff' },
-  summaryCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14,
-    marginBottom: 10, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.15)',
-  },
-  summaryRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    marginBottom: 8,
-  },
+  summaryCard: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,193,7,0.15)' },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   summaryLabel: { fontSize: 13, color: 'rgba(255,255,255,0.4)' },
   summaryValue: { fontSize: 13, color: '#fff', fontWeight: '600' },
-  summaryTotal: {
-    borderTopWidth: 1, borderTopColor: 'rgba(255,193,7,0.15)',
-    paddingTop: 10, marginTop: 4,
-  },
-  summaryTotalLabel: {
-    fontSize: 15, fontWeight: 'bold', color: '#fff',
-  },
-  summaryTotalValue: {
-    fontSize: 22, fontWeight: 'bold', color: '#FFC107',
-  },
-  orderBtn: {
-    backgroundColor: '#FF4757', borderRadius: 18,
-    padding: 16, alignItems: 'center', marginBottom: 10,
-  },
+  summaryTotal: { borderTopWidth: 1, borderTopColor: 'rgba(255,193,7,0.15)', paddingTop: 10, marginTop: 4 },
+  summaryTotalLabel: { fontSize: 15, fontWeight: 'bold', color: '#fff' },
+  summaryTotalValue: { fontSize: 22, fontWeight: 'bold', color: '#FFC107' },
+  orderBtn: { backgroundColor: '#FF4757', borderRadius: 18, padding: 16, alignItems: 'center', marginBottom: 10 },
   orderBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  upiBtn: {
-    backgroundColor: 'rgba(79,110,247,0.12)', borderRadius: 18,
-    padding: 14, alignItems: 'center', marginBottom: 10,
-    borderWidth: 1, borderColor: 'rgba(79,110,247,0.3)',
+  upiBtn: { backgroundColor: 'rgba(79,110,247,0.12)', borderRadius: 18, padding: 14, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: 'rgba(79,110,247,0.3)' },
+  upiBtnText: { color: '#4F6EF7', fontSize: 14, fontWeight: 'bold' },
+  callStoreBtn: { backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 18, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)' },
+  callStoreBtnText: { color: '#4ADE80', fontSize: 14, fontWeight: 'bold' },
+  profileBtn: {
+    backgroundColor: '#0E0E1C', borderRadius: 16, padding: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginBottom: 14, borderWidth: 1, borderColor: 'rgba(79,110,247,0.3)',
   },
-  upiBtnText: {
-    color: '#4F6EF7', fontSize: 14, fontWeight: 'bold',
+  profileBtnAvatar: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: '#4F6EF7', alignItems: 'center', justifyContent: 'center',
   },
-  callStoreBtn: {
-    backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 18,
-    padding: 14, alignItems: 'center', borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.2)',
-  },
-  callStoreBtnText: {
-    color: '#4ADE80', fontSize: 14, fontWeight: 'bold',
-  },
-  storeCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 16, padding: 20,
-    alignItems: 'center', marginBottom: 16, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)',
-  },
+  profileBtnAvatarText: { fontSize: 22, color: '#fff', fontWeight: 'bold' },
+  profileBtnName: { fontSize: 15, fontWeight: 'bold', color: '#fff', marginBottom: 2 },
+  profileBtnPhone: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
+  profileBtnArrow: { fontSize: 11, color: '#4F6EF7', fontWeight: 'bold' },
+  storeCard: { backgroundColor: '#0E0E1C', borderRadius: 16, padding: 20, alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
   storeIcon: { fontSize: 48, marginBottom: 10 },
-  storeName: {
-    fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 4,
-  },
+  storeName: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
   storeAddr: { fontSize: 13, color: 'rgba(255,255,255,0.4)' },
-  storeRow: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 16,
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 8, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)',
-  },
+  storeRow: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
   storeRowLabel: { fontSize: 14, color: 'rgba(255,255,255,0.5)' },
   storeRowValue: { fontSize: 14, color: '#fff', fontWeight: '600' },
-  storeFeatures: {
-    marginTop: 16, backgroundColor: '#0E0E1C', borderRadius: 16,
-    padding: 16, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.15)',
-  },
-  storeFeatTitle: {
-    fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 12,
-  },
-  storeFeatureBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 12, borderBottomWidth: 1,
-    borderBottomColor: 'rgba(79,110,247,0.08)',
-  },
+  storeFeatures: { marginTop: 16, backgroundColor: '#0E0E1C', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
+  storeFeatTitle: { fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 12 },
+  storeFeatureBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(79,110,247,0.08)' },
   storeFeatureBtnIcon: { fontSize: 22 },
-  storeFeatureBtnText: {
-    flex: 1, fontSize: 14, color: '#fff', fontWeight: '600',
-  },
+  storeFeatureBtnText: { flex: 1, fontSize: 14, color: '#fff', fontWeight: '600' },
   storeFeatureBtnArrow: { fontSize: 16, color: '#4F6EF7' },
-  floatingWA: {
-    position: 'absolute', bottom: 70, right: 16,
-    width: 52, height: 52, borderRadius: 26,
-    backgroundColor: '#25D366', alignItems: 'center',
-    justifyContent: 'center', elevation: 8, zIndex: 999,
-    shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4, shadowRadius: 6,
-  },
+  floatingWA: { position: 'absolute', bottom: 70, right: 16, width: 52, height: 52, borderRadius: 26, backgroundColor: '#25D366', alignItems: 'center', justifyContent: 'center', elevation: 8, zIndex: 999, shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.4, shadowRadius: 6 },
   floatingWAIcon: { fontSize: 26 },
-  modalHeader: {
-    backgroundColor: '#0E0E1C', padding: 16,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(79,110,247,0.15)',
-  },
-  modalBack: {
-    backgroundColor: 'rgba(79,110,247,0.1)', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.2)',
-  },
+  modalHeader: { backgroundColor: '#0E0E1C', padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(79,110,247,0.15)' },
+  modalBack: { backgroundColor: 'rgba(79,110,247,0.1)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)' },
   modalBackText: { color: '#4F6EF7', fontSize: 14, fontWeight: 'bold' },
-  modalTitle: {
-    flex: 1, fontSize: 16, fontWeight: 'bold', color: '#fff',
-  },
-  modalActions: {
-    flexDirection: 'row', gap: 10, alignItems: 'center',
-  },
-  heroBox: {
-    height: 180, backgroundColor: '#0E0E1C', alignItems: 'center',
-    justifyContent: 'center',
-  },
+  modalTitle: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  modalActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  heroBox: { height: 180, backgroundColor: '#0E0E1C', alignItems: 'center', justifyContent: 'center' },
   heroIcon: { fontSize: 80 },
-  oemBadge: {
-    position: 'absolute', bottom: 12,
-    backgroundColor: 'rgba(74,222,128,0.12)', borderRadius: 20,
-    paddingHorizontal: 14, paddingVertical: 5, borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.3)',
-  },
+  oemBadge: { position: 'absolute', bottom: 12, backgroundColor: 'rgba(74,222,128,0.12)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)' },
   oemText: { fontSize: 12, color: '#4ADE80', fontWeight: 'bold' },
-  detailName: {
-    fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 4,
-  },
-  detailNameTe: {
-    fontSize: 14, color: 'rgba(79,110,247,0.6)', marginBottom: 6,
-  },
-  detailSku: {
-    fontSize: 11, color: 'rgba(255,255,255,0.3)',
-    letterSpacing: 2, marginBottom: 14,
-  },
-  mechBox: {
-    backgroundColor: 'rgba(255,193,7,0.08)', borderRadius: 12,
-    padding: 12, marginBottom: 14, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.2)',
-  },
-  mechBoxText: {
-    color: '#FFC107', fontWeight: 'bold', fontSize: 13,
-  },
-  priceBox: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 16,
-    gap: 16, marginBottom: 14, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.15)',
-  },
-  priceLabel: {
-    fontSize: 10, color: 'rgba(255,255,255,0.3)',
-    marginBottom: 4, textTransform: 'uppercase',
-  },
-  priceMrp: {
-    fontSize: 18, color: 'rgba(255,255,255,0.25)',
-    textDecorationLine: 'line-through',
-  },
-  priceDivider: {
-    width: 1, height: 40, backgroundColor: 'rgba(255,193,7,0.15)',
-  },
-  priceSelling: {
-    fontSize: 28, fontWeight: 'bold', color: '#FFC107',
-  },
-  saveBadge: {
-    marginLeft: 'auto', backgroundColor: 'rgba(74,222,128,0.1)',
-    borderRadius: 10, padding: 10, borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.2)', alignItems: 'center',
-  },
-  saveText: {
-    fontSize: 11, color: '#4ADE80', fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  stockRow: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: 8, marginBottom: 16,
-  },
+  detailName: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
+  detailNameTe: { fontSize: 14, color: 'rgba(79,110,247,0.6)', marginBottom: 6 },
+  detailSku: { fontSize: 11, color: 'rgba(255,255,255,0.3)', letterSpacing: 2, marginBottom: 14 },
+  mechBox: { backgroundColor: 'rgba(255,193,7,0.08)', borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,193,7,0.2)' },
+  mechBoxText: { color: '#FFC107', fontWeight: 'bold', fontSize: 13 },
+  priceBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0E0E1C', borderRadius: 14, padding: 16, gap: 16, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,193,7,0.15)' },
+  priceLabel: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 4, textTransform: 'uppercase' },
+  priceMrp: { fontSize: 18, color: 'rgba(255,255,255,0.25)', textDecorationLine: 'line-through' },
+  priceDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,193,7,0.15)' },
+  priceSelling: { fontSize: 28, fontWeight: 'bold', color: '#FFC107' },
+  saveBadge: { marginLeft: 'auto', backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)', alignItems: 'center' },
+  saveText: { fontSize: 11, color: '#4ADE80', fontWeight: 'bold', textAlign: 'center' },
+  stockRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   stockDot: { width: 10, height: 10, borderRadius: 5 },
   stockLabel: { fontSize: 14, fontWeight: '600' },
-  notifCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)',
-    marginBottom: 10,
-  },
+  notifCard: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)', marginBottom: 10 },
   notifCardUnread: { borderColor: 'rgba(79,110,247,0.4)' },
   notifIcon2: { fontSize: 26 },
-  notifTitle2: {
-    fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 2,
-  },
+  notifTitle2: { fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 2 },
   notifBody2: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
-  notifTime: {
-    fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 2,
-  },
-  unreadDot: {
-    width: 8, height: 8, borderRadius: 4, backgroundColor: '#4F6EF7',
-  },
-  ratingOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.8)',
-    alignItems: 'center', justifyContent: 'center', padding: 30,
-  },
-  ratingCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 24, padding: 28,
-    width: '100%', alignItems: 'center', borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.25)',
-  },
+  notifTime: { fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 2 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4F6EF7' },
+  ratingOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', alignItems: 'center', justifyContent: 'center', padding: 30 },
+  ratingCard: { backgroundColor: '#0E0E1C', borderRadius: 24, padding: 28, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,193,7,0.25)' },
   ratingEmoji: { fontSize: 48, marginBottom: 12 },
-  ratingTitle: {
-    fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 4,
-  },
-  ratingTe: {
-    fontSize: 13, color: 'rgba(79,110,247,0.5)', marginBottom: 20,
-  },
+  ratingTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
+  ratingTe: { fontSize: 13, color: 'rgba(79,110,247,0.5)', marginBottom: 20 },
   starsRow: { flexDirection: 'row', gap: 8, marginBottom: 24 },
   star: { fontSize: 36 },
   ratingBtns: { flexDirection: 'row', gap: 12, width: '100%' },
-  laterBtn: {
-    flex: 1, backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 14, padding: 14, alignItems: 'center',
-  },
+  laterBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, padding: 14, alignItems: 'center' },
   laterText: { color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' },
-  submitRating: {
-    flex: 2, backgroundColor: '#FFC107', borderRadius: 14,
-    padding: 14, alignItems: 'center',
-  },
-  submitRatingText: {
-    color: '#06060E', fontWeight: 'bold', fontSize: 15,
-  },
+  submitRating: { flex: 2, backgroundColor: '#FFC107', borderRadius: 14, padding: 14, alignItems: 'center' },
+  submitRatingText: { color: '#06060E', fontWeight: 'bold', fontSize: 15 },
 });

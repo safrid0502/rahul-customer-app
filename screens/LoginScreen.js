@@ -1,487 +1,444 @@
-import { useState } from 'react';
+// ════════════════════════════════════════════════════════════════
+// LoginScreen.js — New Rahul Auto Spares Customer App
+// Professional, modern design — Ready for Play Store
+// ════════════════════════════════════════════════════════════════
+
+import { useState, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity,
   SafeAreaView, StatusBar, TextInput,
   KeyboardAvoidingView, Platform,
-  ScrollView, Alert, ActivityIndicator
+  ScrollView, Alert, ActivityIndicator,
+  Animated, Dimensions
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
+const { width } = Dimensions.get('window');
 const API_URL = 'https://rahul-auto-spares-backend.onrender.com';
 
-export default function LoginScreen({
-  onCustomerLogin, onMechanicLogin, onMechanicPending
-}) {
-  const [mode, setMode] = useState('select');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+export default function LoginScreen({ onCustomerLogin, onMechanicLogin, onMechanicPending }) {
+  const [mode, setMode]         = useState('select');
+  const [name, setName]         = useState('');
+  const [phone, setPhone]       = useState('');
   const [shopName, setShopName] = useState('');
-  const [area, setArea] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [area, setArea]         = useState('');
+  const [loading, setLoading]   = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  const animateIn = () => {
+    fadeAnim.setValue(0);
+    slideAnim.setValue(30);
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const goToMode = (m) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMode(m);
+    setTimeout(animateIn, 10);
+  };
 
   const handleCustomerLogin = async () => {
-    if (!name.trim()) {
-      Alert.alert('❌', 'Please enter your name'); return;
-    }
-    if (phone.length < 10) {
-      Alert.alert('❌', 'Enter valid 10 digit phone'); return;
-    }
-    await Haptics.notificationAsync(
-      Haptics.NotificationFeedbackType.Success
-    );
-    const user = {
-      name: name.trim(), phone: phone.trim(), type: 'customer'
-    };
-    await AsyncStorage.setItem(
-      'customer_profile', JSON.stringify(user)
-    );
+    if (!name.trim())       { Alert.alert('', 'Please enter your name'); return; }
+    if (phone.length < 10)  { Alert.alert('', 'Enter valid 10-digit phone number'); return; }
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const user = { name: name.trim(), phone: phone.trim(), type: 'customer' };
+    await AsyncStorage.setItem('customer_profile', JSON.stringify(user));
     onCustomerLogin(user);
   };
 
-  const handleMechanicPhoneCheck = async () => {
-    if (phone.length < 10) {
-      Alert.alert('❌', 'Enter valid 10 digit phone'); return;
-    }
+  const handleMechanicCheck = async () => {
+    if (phone.length < 10) { Alert.alert('', 'Enter valid 10-digit phone number'); return; }
     setLoading(true);
     try {
-      const r = await fetch(
-        `${API_URL}/mechanics/check/${phone.trim()}`
-      );
+      const r = await fetch(`${API_URL}/mechanics/check/${phone.trim()}`);
       const d = await r.json();
       setLoading(false);
       if (d.status === 'approved') {
-        const m = {
-          name: d.name, phone: d.phone,
-          shop_name: d.shop_name, area: d.area,
-          type: 'mechanic', status: 'approved'
-        };
-        await AsyncStorage.setItem(
-          'mechanic_profile', JSON.stringify(m)
-        );
-        await Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success
-        );
+        const m = { name: d.name, phone: d.phone, shop_name: d.shop_name, area: d.area, type: 'mechanic', status: 'approved' };
+        await AsyncStorage.setItem('mechanic_profile', JSON.stringify(m));
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onMechanicLogin(m);
-      } else if (
-        d.status === 'pending' || d.status === 'rejected'
-      ) {
-        const m = {
-          name: d.name, phone: d.phone,
-          shop_name: d.shop_name, area: d.area,
-          type: 'mechanic', status: d.status
-        };
-        await AsyncStorage.setItem(
-          'mechanic_profile', JSON.stringify(m)
-        );
+      } else if (d.status === 'pending' || d.status === 'rejected') {
+        const m = { name: d.name, phone: d.phone, shop_name: d.shop_name, area: d.area, type: 'mechanic', status: d.status };
+        await AsyncStorage.setItem('mechanic_profile', JSON.stringify(m));
         onMechanicPending(m, d.status);
       } else {
         setMode('mechanic_register');
+        setTimeout(animateIn, 10);
       }
     } catch {
       setLoading(false);
       setMode('mechanic_register');
+      setTimeout(animateIn, 10);
     }
   };
 
   const handleMechanicRegister = async () => {
-    if (!name.trim()) {
-      Alert.alert('❌', 'Please enter your name'); return;
-    }
+    if (!name.trim())      { Alert.alert('', 'Please enter your name'); return; }
+    if (phone.length < 10) { Alert.alert('', 'Enter valid 10-digit phone number'); return; }
     setLoading(true);
     try {
       const r = await fetch(`${API_URL}/mechanics/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(), phone: phone.trim(),
-          shop_name: shopName.trim(), area: area.trim()
-        })
+        body: JSON.stringify({ name: name.trim(), phone: phone.trim(), shop_name: shopName.trim(), area: area.trim() })
       });
       const d = await r.json();
       setLoading(false);
-      const m = {
-        name: name.trim(), phone: phone.trim(),
-        shop_name: shopName.trim(), area: area.trim(),
-        type: 'mechanic', status: d.status || 'pending'
-      };
-      await AsyncStorage.setItem(
-        'mechanic_profile', JSON.stringify(m)
-      );
-      if (d.status === 'approved') {
-        onMechanicLogin(m);
-      } else {
-        onMechanicPending(m, d.status || 'pending');
-      }
+      const m = { name: name.trim(), phone: phone.trim(), shop_name: shopName.trim(), area: area.trim(), type: 'mechanic', status: d.status || 'pending' };
+      await AsyncStorage.setItem('mechanic_profile', JSON.stringify(m));
+      if (d.status === 'approved') onMechanicLogin(m);
+      else onMechanicPending(m, d.status || 'pending');
     } catch {
       setLoading(false);
-      Alert.alert('❌ Error', 'Check your internet connection');
+      Alert.alert('Error', 'Check your internet connection');
     }
   };
 
-  // ── SELECT MODE ──
+  // ══════════════════════════════════════
+  // SELECT SCREEN
+  // ══════════════════════════════════════
   if (mode === 'select') {
     return (
       <SafeAreaView style={s.container}>
-        <StatusBar barStyle="light-content"
-          backgroundColor="#06060E" />
-        <View style={s.body}>
-          <View style={s.logoSection}>
-            <View style={s.logoRing}>
-              <Text style={s.logoIcon}>🏍️</Text>
+        <StatusBar barStyle="light-content" backgroundColor="#07111F" />
+        <ScrollView contentContainerStyle={s.selectScroll} showsVerticalScrollIndicator={false}>
+
+          {/* HERO SECTION */}
+          <View style={s.hero}>
+            {/* Shield Logo */}
+            <View style={s.shieldWrap}>
+              <View style={s.shield}>
+                <Text style={s.shieldRAS}>RAS</Text>
+                <Text style={s.shieldBike}>🏍️</Text>
+              </View>
             </View>
-            <Text style={s.logoSub}>WELCOME TO</Text>
-            <Text style={s.logoName}>
-              NEW RAHUL AUTO SPARES
-            </Text>
-            <Text style={s.logoLocation}>
-              📍 Telugu Peta, Nandyal
-            </Text>
+            <Text style={s.heroTagline}>YOUR TRUSTED SPARES PARTNER</Text>
+            <Text style={s.heroName}>New Rahul Auto Spares</Text>
+            <Text style={s.heroLocation}>📍 Telugu Peta, Nandyal · Est. 2002</Text>
+
+            {/* STATS ROW */}
+            <View style={s.statsRow}>
+              {[
+                { num: '500+', label: 'Products' },
+                { num: '20+', label: 'Bike Models' },
+                { num: '5★', label: 'Rating' },
+              ].map((stat, i) => (
+                <View key={i} style={s.statBox}>
+                  <Text style={s.statNum}>{stat.num}</Text>
+                  <Text style={s.statLabel}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
           </View>
 
-          <Text style={s.selectLabel}>Who are you?</Text>
+          {/* WHO ARE YOU */}
+          <Text style={s.sectionLabel}>SELECT YOUR ACCOUNT TYPE</Text>
 
-          <TouchableOpacity
-            style={s.modeCard}
-            onPress={() => {
-              Haptics.impactAsync(
-                Haptics.ImpactFeedbackStyle.Light
-              );
-              setMode('customer');
-            }}
-          >
-            <View style={[s.modeIconBox,
-              { backgroundColor: 'rgba(79,110,247,0.15)' }]}>
-              <Text style={s.modeIcon}>🛍️</Text>
+          {/* CUSTOMER CARD */}
+          <TouchableOpacity style={s.roleCard} onPress={() => goToMode('customer')} activeOpacity={0.8}>
+            <View style={[s.roleIconBox, { backgroundColor: 'rgba(79,110,247,0.12)' }]}>
+              <Text style={s.roleIconEmoji}>🛍️</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.modeTitle}>Customer</Text>
-              <Text style={s.modeSub}>
-                Browse parts · Place orders · Track delivery
-              </Text>
-              <Text style={s.modeSubTe}>
-                స్పేర్ పార్ట్స్ కొనండి
-              </Text>
+            <View style={s.roleInfo}>
+              <Text style={s.roleTitle}>Customer</Text>
+              <Text style={s.roleSub}>Browse · Order · Track</Text>
+              <Text style={s.roleTe}>స్పేర్ పార్ట్స్ కొనండి</Text>
+              <View style={s.roleTagRow}>
+                {['Free', 'All Bikes', 'Fast Pickup'].map((tag, i) => (
+                  <View key={i} style={[s.roleTag, { backgroundColor: 'rgba(79,110,247,0.1)' }]}>
+                    <Text style={[s.roleTagText, { color: '#4F6EF7' }]}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-            <Text style={s.modeArrow}>→</Text>
+            <View style={s.roleArrow}>
+              <Text style={s.roleArrowText}>→</Text>
+            </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[s.modeCard,
-              { borderColor: 'rgba(255,193,7,0.3)' }]}
-            onPress={() => {
-              Haptics.impactAsync(
-                Haptics.ImpactFeedbackStyle.Light
-              );
-              setMode('mechanic');
-            }}
-          >
-            <View style={[s.modeIconBox,
-              { backgroundColor: 'rgba(255,193,7,0.12)' }]}>
-              <Text style={s.modeIcon}>🔧</Text>
+          {/* MECHANIC CARD */}
+          <TouchableOpacity style={[s.roleCard, s.mechCard]} onPress={() => goToMode('mechanic')} activeOpacity={0.8}>
+            <View style={[s.roleIconBox, { backgroundColor: 'rgba(255,193,7,0.12)' }]}>
+              <Text style={s.roleIconEmoji}>🔧</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.modeTitle, { color: '#FFC107' }]}>
-                Mechanic
-              </Text>
-              <Text style={s.modeSub}>
-                Get 5% discount · Wholesale prices
-              </Text>
-              <Text style={s.modeSubTe}>
-                మెకానిక్ ఖాతా · 5% డిస్కౌంట్
-              </Text>
+            <View style={s.roleInfo}>
+              <Text style={[s.roleTitle, { color: '#FFC107' }]}>Mechanic</Text>
+              <Text style={s.roleSub}>Wholesale Prices · 5% Discount</Text>
+              <Text style={s.roleTe}>మెకానిక్ ఖాతా · 5% తగ్గింపు</Text>
+              <View style={s.roleTagRow}>
+                {['5% OFF', 'Wholesale', 'Priority'].map((tag, i) => (
+                  <View key={i} style={[s.roleTag, { backgroundColor: 'rgba(255,193,7,0.1)' }]}>
+                    <Text style={[s.roleTagText, { color: '#FFC107' }]}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-            <Text style={[s.modeArrow,
-              { color: '#FFC107' }]}>→</Text>
+            <View style={[s.roleArrow, { backgroundColor: 'rgba(255,193,7,0.1)' }]}>
+              <Text style={[s.roleArrowText, { color: '#FFC107' }]}>→</Text>
+            </View>
           </TouchableOpacity>
 
-          <View style={s.hoursBox}>
-            <Text style={s.hoursText}>
-              🕐 Mon–Sat: 10AM–9PM · Sun: 10AM–3PM
-            </Text>
-            <Text style={s.hoursPhone}>📞 08514-244944</Text>
+          {/* STORE INFO */}
+          <View style={s.storeInfoBox}>
+            <View style={s.storeInfoRow}>
+              <Text style={s.storeInfoIcon}>🕐</Text>
+              <Text style={s.storeInfoText}>Mon–Sat: 10AM–9PM · Sun: 10AM–3PM</Text>
+            </View>
+            <View style={s.storeInfoRow}>
+              <Text style={s.storeInfoIcon}>📞</Text>
+              <Text style={s.storeInfoText}>08514-244944</Text>
+            </View>
+            <View style={s.storeInfoRow}>
+              <Text style={s.storeInfoIcon}>💬</Text>
+              <Text style={s.storeInfoText}>WhatsApp: +91 6300281504</Text>
+            </View>
           </View>
-        </View>
+
+          <View style={{ height: 30 }} />
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // ── CUSTOMER MODE ──
+  // ══════════════════════════════════════
+  // CUSTOMER LOGIN
+  // ══════════════════════════════════════
   if (mode === 'customer') {
     return (
       <SafeAreaView style={s.container}>
-        <StatusBar barStyle="light-content"
-          backgroundColor="#06060E" />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          <ScrollView
-            contentContainerStyle={s.formBody}
-            keyboardShouldPersistTaps="handled"
-          >
-            <TouchableOpacity
-              style={s.backChip}
-              onPress={() => setMode('select')}
-            >
-              <Text style={s.backChipText}>← Back</Text>
+        <StatusBar barStyle="light-content" backgroundColor="#07111F" />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={s.formScroll} keyboardShouldPersistTaps="handled">
+
+            <TouchableOpacity style={s.backBtn} onPress={() => setMode('select')}>
+              <Text style={s.backBtnText}>← Back</Text>
             </TouchableOpacity>
 
+            {/* HEADER */}
             <View style={s.formHeader}>
-              <Text style={s.formHeaderIcon}>🛍️</Text>
-              <Text style={s.formHeaderTitle}>Customer Login</Text>
-              <Text style={s.formHeaderSub}>
-                Enter once · Saved automatically!
-              </Text>
+              <View style={[s.formHeaderIcon, { backgroundColor: 'rgba(79,110,247,0.1)', borderColor: 'rgba(79,110,247,0.3)' }]}>
+                <Text style={{ fontSize: 36 }}>🛍️</Text>
+              </View>
+              <Text style={s.formTitle}>Customer Login</Text>
+              <Text style={s.formSub}>Enter once · Saved for next time</Text>
             </View>
 
-            <View style={s.inputGroup}>
-              <Text style={s.inputLabel}>Your Name</Text>
-              <View style={s.inputBox}>
-                <Text style={s.inputPrefix}>👤</Text>
+            {/* INPUTS */}
+            <View style={s.inputCard}>
+              <Text style={s.inputCardTitle}>Your Details</Text>
+
+              <Text style={s.inputLabel}>FULL NAME</Text>
+              <View style={s.inputRow}>
+                <Text style={s.inputIcon}>👤</Text>
                 <TextInput
-                  style={s.input}
-                  placeholder="Enter your full name"
+                  style={s.inputField}
+                  placeholder="e.g. Rahul Kumar"
                   placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                />
+                  value={name} onChangeText={setName}
+                  autoCapitalize="words" />
               </View>
+
+              <Text style={[s.inputLabel, { marginTop: 16 }]}>PHONE NUMBER</Text>
+              <View style={s.inputRow}>
+                <Text style={s.inputIcon}>+91</Text>
+                <TextInput
+                  style={s.inputField}
+                  placeholder="10-digit mobile number"
+                  placeholderTextColor="rgba(255,255,255,0.2)"
+                  value={phone} onChangeText={setPhone}
+                  keyboardType="phone-pad" maxLength={10} />
+              </View>
+              {phone.length === 10 && (
+                <Text style={s.validText}>✅ Valid number</Text>
+              )}
             </View>
 
-            <View style={s.inputGroup}>
-              <Text style={s.inputLabel}>Phone Number</Text>
-              <View style={s.inputBox}>
-                <Text style={s.inputPrefix}>+91</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="10 digit mobile number"
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                  maxLength={10}
-                />
-              </View>
+            {/* FEATURES */}
+            <View style={s.featuresBox}>
+              {[
+                { icon: '🏍️', text: 'Browse parts by your bike model' },
+                { icon: '📦', text: 'Track your order in real-time' },
+                { icon: '🔔', text: 'Get notified when order is ready' },
+                { icon: '💎', text: 'Earn loyalty points on every order' },
+              ].map((f, i) => (
+                <View key={i} style={s.featureRow}>
+                  <Text style={s.featureIcon}>{f.icon}</Text>
+                  <Text style={s.featureText}>{f.text}</Text>
+                </View>
+              ))}
             </View>
 
             <TouchableOpacity
-              style={[s.submitBtn,
-                { backgroundColor: '#4F6EF7' },
-                (!name || phone.length < 10) && { opacity: 0.4 }
-              ]}
+              style={[s.submitBtn, { backgroundColor: '#4F6EF7' }, (!name || phone.length < 10) && { opacity: 0.4 }]}
               onPress={handleCustomerLogin}
-              disabled={!name || phone.length < 10}
-            >
+              disabled={!name || phone.length < 10}>
               <Text style={s.submitBtnText}>🚀 Start Shopping</Text>
             </TouchableOpacity>
+
+            <View style={{ height: 40 }} />
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
-  // ── MECHANIC PHONE CHECK ──
+  // ══════════════════════════════════════
+  // MECHANIC LOGIN
+  // ══════════════════════════════════════
   if (mode === 'mechanic') {
     return (
       <SafeAreaView style={s.container}>
-        <StatusBar barStyle="light-content"
-          backgroundColor="#06060E" />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          <ScrollView
-            contentContainerStyle={s.formBody}
-            keyboardShouldPersistTaps="handled"
-          >
-            <TouchableOpacity
-              style={s.backChip}
-              onPress={() => setMode('select')}
-            >
-              <Text style={s.backChipText}>← Back</Text>
+        <StatusBar barStyle="light-content" backgroundColor="#07111F" />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={s.formScroll} keyboardShouldPersistTaps="handled">
+
+            <TouchableOpacity style={s.backBtn} onPress={() => setMode('select')}>
+              <Text style={s.backBtnText}>← Back</Text>
             </TouchableOpacity>
 
             <View style={s.formHeader}>
-              <Text style={s.formHeaderIcon}>🔧</Text>
-              <Text style={[s.formHeaderTitle,
-                { color: '#FFC107' }]}>
-                Mechanic Login
-              </Text>
-              <Text style={s.formHeaderSub}>
-                Enter phone to check your account
-              </Text>
+              <View style={[s.formHeaderIcon, { backgroundColor: 'rgba(255,193,7,0.1)', borderColor: 'rgba(255,193,7,0.3)' }]}>
+                <Text style={{ fontSize: 36 }}>🔧</Text>
+              </View>
+              <Text style={[s.formTitle, { color: '#FFC107' }]}>Mechanic Login</Text>
+              <Text style={s.formSub}>Check your approved account</Text>
             </View>
 
-            <View style={s.benefitsBox}>
+            {/* BENEFITS */}
+            <View style={s.mechBenefitsCard}>
+              <Text style={s.mechBenefitsTitle}>🎁 Mechanic Benefits</Text>
               {[
-                '✅ 5% discount on all parts',
-                '✅ Wholesale pricing',
-                '✅ Priority order processing',
+                { icon: '💰', text: '5% discount on all parts' },
+                { icon: '📦', text: 'Wholesale pricing for bulk orders' },
+                { icon: '⚡', text: 'Priority order processing' },
+                { icon: '📱', text: 'Dedicated mechanic support' },
               ].map((b, i) => (
-                <Text key={i} style={s.benefitText}>{b}</Text>
+                <View key={i} style={s.mechBenefitRow}>
+                  <Text style={s.mechBenefitIcon}>{b.icon}</Text>
+                  <Text style={s.mechBenefitText}>{b.text}</Text>
+                </View>
               ))}
-              <Text style={s.benefitNote}>
-                ⚠️ Requires store approval
-              </Text>
             </View>
 
-            <View style={s.inputGroup}>
-              <Text style={s.inputLabel}>Your Phone Number</Text>
-              <View style={[s.inputBox,
-                { borderColor: 'rgba(255,193,7,0.3)' }]}>
-                <Text style={s.inputPrefix}>+91</Text>
+            <View style={s.inputCard}>
+              <Text style={s.inputCardTitle}>Enter Your Phone</Text>
+              <Text style={s.inputLabel}>REGISTERED PHONE NUMBER</Text>
+              <View style={[s.inputRow, { borderColor: 'rgba(255,193,7,0.3)' }]}>
+                <Text style={s.inputIcon}>+91</Text>
                 <TextInput
-                  style={s.input}
-                  placeholder="10 digit mobile number"
+                  style={s.inputField}
+                  placeholder="10-digit mobile number"
                   placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                  maxLength={10}
-                />
+                  value={phone} onChangeText={setPhone}
+                  keyboardType="phone-pad" maxLength={10} />
               </View>
             </View>
 
             <TouchableOpacity
-              style={[s.submitBtn,
-                { backgroundColor: '#FFC107' },
-                (phone.length < 10 || loading) && { opacity: 0.4 }
-              ]}
-              onPress={handleMechanicPhoneCheck}
-              disabled={phone.length < 10 || loading}
-            >
+              style={[s.submitBtn, { backgroundColor: '#FFC107' }, (phone.length < 10 || loading) && { opacity: 0.4 }]}
+              onPress={handleMechanicCheck}
+              disabled={phone.length < 10 || loading}>
               {loading
-                ? <ActivityIndicator color="#06060E" />
-                : <Text style={[s.submitBtnText,
-                    { color: '#06060E' }]}>
-                    🔍 Check My Account
-                  </Text>
-              }
+                ? <ActivityIndicator color="#07111F" />
+                : <Text style={[s.submitBtnText, { color: '#07111F' }]}>🔍 Check My Account</Text>}
             </TouchableOpacity>
 
-            <View style={s.dividerRow}>
+            <View style={s.divider}>
               <View style={s.dividerLine} />
-              <Text style={s.dividerText}>New Mechanic?</Text>
+              <Text style={s.dividerLabel}>New Mechanic?</Text>
               <View style={s.dividerLine} />
             </View>
 
             <TouchableOpacity
-              style={[s.outlineBtn,
-                { borderColor: 'rgba(255,193,7,0.3)' }]}
-              onPress={() => setMode('mechanic_register')}
-            >
-              <Text style={[s.outlineBtnText,
-                { color: '#FFC107' }]}>
-                📝 Register as New Mechanic
-              </Text>
+              style={[s.outlineBtn, { borderColor: 'rgba(255,193,7,0.3)' }]}
+              onPress={() => goToMode('mechanic_register')}>
+              <Text style={[s.outlineBtnText, { color: '#FFC107' }]}>📝 Register as New Mechanic</Text>
             </TouchableOpacity>
+
+            <View style={{ height: 40 }} />
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
-  // ── MECHANIC REGISTER ──
+  // ══════════════════════════════════════
+  // MECHANIC REGISTER
+  // ══════════════════════════════════════
   return (
     <SafeAreaView style={s.container}>
-      <StatusBar barStyle="light-content"
-        backgroundColor="#06060E" />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={s.formBody}
-          keyboardShouldPersistTaps="handled"
-        >
-          <TouchableOpacity
-            style={s.backChip}
-            onPress={() => setMode('mechanic')}
-          >
-            <Text style={s.backChipText}>← Back</Text>
+      <StatusBar barStyle="light-content" backgroundColor="#07111F" />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={s.formScroll} keyboardShouldPersistTaps="handled">
+
+          <TouchableOpacity style={s.backBtn} onPress={() => goToMode('mechanic')}>
+            <Text style={s.backBtnText}>← Back</Text>
           </TouchableOpacity>
 
           <View style={s.formHeader}>
-            <Text style={s.formHeaderIcon}>📝</Text>
-            <Text style={[s.formHeaderTitle,
-              { color: '#FFC107' }]}>
-              Register as Mechanic
-            </Text>
-            <Text style={s.formHeaderSub}>
-              Fill details · Owner will approve you!
-            </Text>
+            <View style={[s.formHeaderIcon, { backgroundColor: 'rgba(255,193,7,0.1)', borderColor: 'rgba(255,193,7,0.3)' }]}>
+              <Text style={{ fontSize: 36 }}>📝</Text>
+            </View>
+            <Text style={[s.formTitle, { color: '#FFC107' }]}>Register as Mechanic</Text>
+            <Text style={s.formSub}>Fill details · Owner will approve you!</Text>
           </View>
 
-          {[
-            {
-              label: 'Your Name *', icon: '🔧',
-              value: name, setter: setName,
-              placeholder: 'Full name', caps: 'words'
-            },
-            {
-              label: 'Phone Number *', icon: '+91',
-              value: phone, setter: setPhone,
-              placeholder: '10 digit number',
-              keyboard: 'phone-pad', max: 10
-            },
-            {
-              label: 'Garage / Shop Name',
-              icon: '🏪', value: shopName,
-              setter: setShopName,
-              placeholder: 'Your shop name (optional)',
-              caps: 'words'
-            },
-            {
-              label: 'Area in Nandyal',
-              icon: '📍', value: area,
-              setter: setArea,
-              placeholder: 'Your area (optional)',
-              caps: 'words'
-            },
-          ].map((field, i) => (
-            <View key={i} style={s.inputGroup}>
-              <Text style={s.inputLabel}>{field.label}</Text>
-              <View style={[s.inputBox,
-                { borderColor: 'rgba(255,193,7,0.25)' }]}>
-                <Text style={s.inputPrefix}>{field.icon}</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder={field.placeholder}
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  value={field.value}
-                  onChangeText={field.setter}
-                  keyboardType={field.keyboard || 'default'}
-                  autoCapitalize={field.caps || 'none'}
-                  maxLength={field.max}
-                />
+          <View style={s.inputCard}>
+            <Text style={s.inputCardTitle}>Your Details</Text>
+
+            {[
+              { label: 'FULL NAME *', icon: '🔧', value: name, setter: setName, placeholder: 'Your full name', caps: 'words' },
+              { label: 'PHONE NUMBER *', icon: '+91', value: phone, setter: setPhone, placeholder: '10-digit number', keyboard: 'phone-pad', max: 10 },
+              { label: 'GARAGE / SHOP NAME', icon: '🏪', value: shopName, setter: setShopName, placeholder: 'Your shop name (optional)', caps: 'words' },
+              { label: 'AREA IN NANDYAL', icon: '📍', value: area, setter: setArea, placeholder: 'Your area (optional)', caps: 'words' },
+            ].map((field, i) => (
+              <View key={i} style={{ marginBottom: 14 }}>
+                <Text style={s.inputLabel}>{field.label}</Text>
+                <View style={[s.inputRow, { borderColor: 'rgba(255,193,7,0.25)' }]}>
+                  <Text style={s.inputIcon}>{field.icon}</Text>
+                  <TextInput
+                    style={s.inputField}
+                    placeholder={field.placeholder}
+                    placeholderTextColor="rgba(255,255,255,0.2)"
+                    value={field.value} onChangeText={field.setter}
+                    keyboardType={field.keyboard || 'default'}
+                    autoCapitalize={field.caps || 'none'}
+                    maxLength={field.max} />
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
+          </View>
 
           <TouchableOpacity
-            style={[s.submitBtn,
-              { backgroundColor: '#FFC107' },
-              (!name || phone.length < 10 || loading) &&
-              { opacity: 0.4 }
-            ]}
+            style={[s.submitBtn, { backgroundColor: '#FFC107' }, (!name || phone.length < 10 || loading) && { opacity: 0.4 }]}
             onPress={handleMechanicRegister}
-            disabled={!name || phone.length < 10 || loading}
-          >
+            disabled={!name || phone.length < 10 || loading}>
             {loading
-              ? <ActivityIndicator color="#06060E" />
-              : <Text style={[s.submitBtnText,
-                  { color: '#06060E' }]}>
-                  🔧 Submit for Approval
-                </Text>
-            }
+              ? <ActivityIndicator color="#07111F" />
+              : <Text style={[s.submitBtnText, { color: '#07111F' }]}>🔧 Submit for Approval</Text>}
           </TouchableOpacity>
 
-          <Text style={s.approvalNote}>
-            ✅ Store will approve within 24 hours{'\n'}
-            📱 You'll get notified when approved!
-          </Text>
+          <View style={s.approvalCard}>
+            <Text style={s.approvalTitle}>What happens next?</Text>
+            {[
+              { icon: '1️⃣', text: 'Your request is sent to the store owner' },
+              { icon: '2️⃣', text: 'Owner reviews and approves within 24 hours' },
+              { icon: '3️⃣', text: 'You get 5% discount on all parts!' },
+            ].map((step, i) => (
+              <View key={i} style={s.approvalStep}>
+                <Text style={s.approvalStepIcon}>{step.icon}</Text>
+                <Text style={s.approvalStepText}>{step.text}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -489,123 +446,176 @@ export default function LoginScreen({
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#06060E' },
-  body: { flex: 1, padding: 20 },
-  logoSection: { alignItems: 'center', paddingVertical: 30 },
-  logoRing: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: 'rgba(79,110,247,0.1)', borderWidth: 2,
-    borderColor: 'rgba(79,110,247,0.3)', alignItems: 'center',
-    justifyContent: 'center', marginBottom: 16,
+  container: { flex: 1, backgroundColor: '#07111F' },
+
+  // Select screen
+  selectScroll: { padding: 20 },
+
+  // Hero
+  hero: { alignItems: 'center', paddingVertical: 24 },
+  shieldWrap: { marginBottom: 16 },
+  shield: {
+    width: 110, height: 130, backgroundColor: '#0D1F3C',
+    borderWidth: 2.5, borderColor: '#C9A84C',
+    borderRadius: 20, borderBottomLeftRadius: 50,
+    borderBottomRightRadius: 50, alignItems: 'center',
+    justifyContent: 'center', gap: 4,
+    shadowColor: '#C9A84C', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
   },
-  logoIcon: { fontSize: 52 },
-  logoSub: {
+  shieldRAS: { fontSize: 28, fontWeight: 'bold', color: '#fff', letterSpacing: 4 },
+  shieldBike: { fontSize: 22 },
+  heroTagline: { fontSize: 9, color: '#C9A84C', letterSpacing: 4, marginBottom: 6 },
+  heroName: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginBottom: 4, textAlign: 'center' },
+  heroLocation: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row', gap: 0,
+    backgroundColor: '#0D1F3C', borderRadius: 16,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)',
+    overflow: 'hidden', width: width - 40,
+  },
+  statBox: { flex: 1, alignItems: 'center', padding: 14 },
+  statNum: { fontSize: 18, fontWeight: 'bold', color: '#C9A84C', marginBottom: 2 },
+  statLabel: { fontSize: 10, color: 'rgba(255,255,255,0.4)' },
+
+  // Section label
+  sectionLabel: {
     fontSize: 10, color: 'rgba(255,255,255,0.3)',
-    letterSpacing: 4, marginBottom: 4,
+    letterSpacing: 3, marginBottom: 14, marginTop: 8,
   },
-  logoName: {
-    fontSize: 18, fontWeight: 'bold', color: '#ffffff',
-    letterSpacing: 1, textAlign: 'center', marginBottom: 6,
+
+  // Role cards
+  roleCard: {
+    backgroundColor: '#0D1F3C', borderRadius: 20,
+    padding: 18, flexDirection: 'row', alignItems: 'center',
+    gap: 14, marginBottom: 12, borderWidth: 1,
+    borderColor: 'rgba(79,110,247,0.25)',
+    shadowColor: '#4F6EF7', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 6, elevation: 4,
   },
-  logoLocation: {
-    fontSize: 12, color: 'rgba(255,255,255,0.3)',
+  mechCard: {
+    borderColor: 'rgba(255,193,7,0.25)',
+    shadowColor: '#FFC107',
   },
-  selectLabel: {
-    fontSize: 13, color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase',
-  },
-  modeCard: {
-    backgroundColor: '#0E0E1C', borderRadius: 20, padding: 18,
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)',
-    marginBottom: 12,
-  },
-  modeIconBox: {
-    width: 52, height: 52, borderRadius: 14,
+  roleIconBox: {
+    width: 56, height: 56, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
   },
-  modeIcon: { fontSize: 26 },
-  modeTitle: {
-    fontSize: 17, fontWeight: 'bold',
-    color: '#ffffff', marginBottom: 3,
+  roleIconEmoji: { fontSize: 28 },
+  roleInfo: { flex: 1 },
+  roleTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 2 },
+  roleSub: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 2 },
+  roleTe: { fontSize: 11, color: 'rgba(79,110,247,0.5)', marginBottom: 8 },
+  roleTagRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  roleTag: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  roleTagText: { fontSize: 10, fontWeight: 'bold' },
+  roleArrow: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(79,110,247,0.1)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  modeSub: {
-    fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 2,
+  roleArrowText: { fontSize: 18, color: '#4F6EF7', fontWeight: 'bold' },
+
+  // Store info
+  storeInfoBox: {
+    backgroundColor: '#0D1F3C', borderRadius: 16,
+    padding: 14, marginTop: 8, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)', gap: 10,
   },
-  modeSubTe: { fontSize: 11, color: 'rgba(79,110,247,0.5)' },
-  modeArrow: {
-    fontSize: 20, color: '#4F6EF7', fontWeight: 'bold',
-  },
-  hoursBox: { marginTop: 20, alignItems: 'center', gap: 6 },
-  hoursText: { fontSize: 12, color: 'rgba(255,255,255,0.2)' },
-  hoursPhone: { fontSize: 12, color: 'rgba(255,255,255,0.2)' },
-  formBody: { flexGrow: 1, padding: 20 },
-  backChip: {
-    backgroundColor: 'rgba(79,110,247,0.1)', alignSelf: 'flex-start',
+  storeInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  storeInfoIcon: { fontSize: 16, width: 24 },
+  storeInfoText: { fontSize: 12, color: 'rgba(255,255,255,0.4)', flex: 1 },
+
+  // Form screens
+  formScroll: { flexGrow: 1, padding: 20 },
+  backBtn: {
+    backgroundColor: 'rgba(255,255,255,0.06)', alignSelf: 'flex-start',
     borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8,
-    borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)',
-    marginBottom: 20,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginBottom: 24,
   },
-  backChipText: {
-    color: '#4F6EF7', fontSize: 14, fontWeight: 'bold',
-  },
+  backBtnText: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: 'bold' },
+
   formHeader: { alignItems: 'center', marginBottom: 24 },
-  formHeaderIcon: { fontSize: 48, marginBottom: 12 },
-  formHeaderTitle: {
-    fontSize: 24, fontWeight: 'bold',
-    color: '#ffffff', marginBottom: 6,
+  formHeaderIcon: {
+    width: 80, height: 80, borderRadius: 40,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, marginBottom: 14,
   },
-  formHeaderSub: {
-    fontSize: 13, color: 'rgba(255,255,255,0.35)',
-    textAlign: 'center',
+  formTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 6 },
+  formSub: { fontSize: 13, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
+
+  // Input card
+  inputCard: {
+    backgroundColor: '#0D1F3C', borderRadius: 20,
+    padding: 16, marginBottom: 16, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  benefitsBox: {
-    backgroundColor: 'rgba(255,193,7,0.06)', borderRadius: 16,
-    padding: 14, marginBottom: 20, borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.15)', gap: 6,
-  },
-  benefitText: { fontSize: 13, color: 'rgba(255,255,255,0.6)' },
-  benefitNote: {
-    fontSize: 11, color: 'rgba(255,193,7,0.5)', marginTop: 4,
-  },
-  inputGroup: { marginBottom: 14 },
+  inputCardTitle: { fontSize: 13, fontWeight: 'bold', color: '#fff', marginBottom: 16 },
   inputLabel: {
-    fontSize: 11, color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase',
+    fontSize: 10, color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 2, marginBottom: 8,
   },
-  inputBox: {
+  inputRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#0E0E1C', borderRadius: 16,
-    paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1,
-    borderColor: 'rgba(79,110,247,0.2)', gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 14,
+    borderWidth: 1, borderColor: 'rgba(79,110,247,0.2)', gap: 10,
   },
-  inputPrefix: {
-    fontSize: 15, color: 'rgba(255,255,255,0.3)', fontWeight: 'bold',
+  inputIcon: { fontSize: 15, color: 'rgba(255,255,255,0.35)', fontWeight: 'bold', minWidth: 28 },
+  inputField: { flex: 1, color: '#fff', fontSize: 16 },
+  validText: { fontSize: 11, color: '#4ADE80', marginTop: 6, marginLeft: 4 },
+
+  // Features box
+  featuresBox: {
+    backgroundColor: '#0D1F3C', borderRadius: 16,
+    padding: 14, marginBottom: 16, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)', gap: 12,
   },
-  input: { flex: 1, color: '#ffffff', fontSize: 16 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  featureIcon: { fontSize: 20, width: 28 },
+  featureText: { fontSize: 13, color: 'rgba(255,255,255,0.6)', flex: 1 },
+
+  // Submit button
   submitBtn: {
     borderRadius: 20, padding: 18, alignItems: 'center',
-    marginTop: 8, marginBottom: 14,
+    marginBottom: 14,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
   },
-  submitBtnText: {
-    color: '#ffffff', fontSize: 17, fontWeight: 'bold',
+  submitBtnText: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
+
+  // Mechanic benefits
+  mechBenefitsCard: {
+    backgroundColor: 'rgba(255,193,7,0.06)', borderRadius: 16,
+    padding: 14, marginBottom: 16, borderWidth: 1,
+    borderColor: 'rgba(255,193,7,0.15)',
   },
-  dividerRow: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: 12, marginVertical: 16,
-  },
-  dividerLine: {
-    flex: 1, height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  dividerText: { fontSize: 12, color: 'rgba(255,255,255,0.3)' },
+  mechBenefitsTitle: { fontSize: 14, fontWeight: 'bold', color: '#FFC107', marginBottom: 12 },
+  mechBenefitRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  mechBenefitIcon: { fontSize: 18, width: 26 },
+  mechBenefitText: { fontSize: 13, color: 'rgba(255,255,255,0.6)', flex: 1 },
+
+  // Divider
+  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 16 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
+  dividerLabel: { fontSize: 12, color: 'rgba(255,255,255,0.3)' },
+
+  // Outline button
   outlineBtn: {
-    borderRadius: 20, padding: 16, borderWidth: 1,
-    alignItems: 'center',
+    borderRadius: 16, padding: 16, borderWidth: 1,
+    alignItems: 'center', marginBottom: 10,
   },
   outlineBtnText: { fontSize: 15, fontWeight: 'bold' },
-  approvalNote: {
-    fontSize: 12, color: 'rgba(255,255,255,0.25)',
-    textAlign: 'center', lineHeight: 20, marginTop: 8,
+
+  // Approval card
+  approvalCard: {
+    backgroundColor: 'rgba(255,193,7,0.06)', borderRadius: 16,
+    padding: 14, borderWidth: 1, borderColor: 'rgba(255,193,7,0.15)',
   },
+  approvalTitle: { fontSize: 13, fontWeight: 'bold', color: '#FFC107', marginBottom: 12 },
+  approvalStep: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 10 },
+  approvalStepIcon: { fontSize: 18 },
+  approvalStepText: { fontSize: 13, color: 'rgba(255,255,255,0.6)', flex: 1, lineHeight: 20 },
 });

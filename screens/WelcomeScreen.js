@@ -37,7 +37,7 @@ const SLIDES = [
   },
 ];
 
-export default function WelcomeScreen({ onDone }) {
+export default function WelcomeScreen({ onLogin, onDone }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const flatRef = useRef(null);
   const slide = SLIDES[activeIndex];
@@ -50,7 +50,7 @@ export default function WelcomeScreen({ onDone }) {
       });
       setActiveIndex(nextIndex);
     } else {
-      onDone();
+      onLogin();
     }
   };
 
