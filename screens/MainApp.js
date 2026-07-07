@@ -442,7 +442,11 @@ export default function MainApp({
 
   const placeOrder = async () => {
     if (!pickupTime) {
-      Alert.alert('⏰', 'Please select pickup time!');
+      Alert.alert('Pickup Time Required', 'Please enter when you will collect the order.\n\nExample: Today 5PM or Tomorrow 11AM');
+      return;
+    }
+    if (cart.length === 0) {
+      Alert.alert('Cart Empty', 'Please add parts to your cart before placing order.');
       return;
     }
     await Haptics.notificationAsync(

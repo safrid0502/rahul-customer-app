@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Platform, Animated, Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import OnboardingScreen from './screens/OnboardingScreen';
@@ -211,9 +212,19 @@ export default function App() {
 
   if (!appReady) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#4F6EF7" />
-      </View>
+      <LinearGradient colors={['#07111F', '#0D1F3C', '#07111F']} style={styles.loading}>
+        {/* RAS Shield Logo */}
+        <View style={styles.loadingShield}>
+          <View style={styles.loadingShieldInner}>
+            <Text style={styles.loadingRAS}>RAS</Text>
+            <Text style={styles.loadingBike}>🏍️</Text>
+          </View>
+        </View>
+        <Text style={styles.loadingBrand}>New Rahul Auto Spares</Text>
+        <Text style={styles.loadingLocation}>Telugu Peta, Nandyal</Text>
+        <ActivityIndicator size="small" color="#C9A84C" style={{ marginTop: 28 }} />
+        <Text style={styles.loadingHint}>Loading...</Text>
+      </LinearGradient>
     );
   }
 
@@ -252,22 +263,25 @@ export default function App() {
 
 const styles = StyleSheet.create({
   loading: {
-    flex: 1, backgroundColor: '#07111F',
-    alignItems: 'center', justifyContent: 'center', gap: 6,
+    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8,
   },
-  loadingLogo: {
-    width: 90, height: 90, borderRadius: 45,
-    backgroundColor: 'rgba(79,110,247,0.15)',
+  loadingShield: {
+    width: 110, height: 130,
+    backgroundColor: '#0D1F3C',
+    borderWidth: 2.5, borderColor: '#C9A84C',
+    borderRadius: 20, borderBottomLeftRadius: 55,
+    borderBottomRightRadius: 55,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: 'rgba(79,110,247,0.3)',
-    marginBottom: 12,
+    marginBottom: 20,
+    shadowColor: '#C9A84C', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3, shadowRadius: 12, elevation: 10,
   },
-  loadingEmoji: { fontSize: 42 },
-  loadingBrand: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  loadingTagline: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
-  loadingHint: { fontSize: 11, color: 'rgba(255,255,255,0.2)', marginTop: 8 },
-  loadingOld: {
-    flex: 1, backgroundColor: '#06060E',
-    alignItems: 'center', justifyContent: 'center',
+  loadingShieldInner: { alignItems: 'center', gap: 4 },
+  loadingRAS: {
+    fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 4,
   },
+  loadingBike: { fontSize: 20 },
+  loadingBrand: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  loadingLocation: { fontSize: 12, color: 'rgba(201,168,76,0.7)', letterSpacing: 1 },
+  loadingHint: { fontSize: 11, color: 'rgba(255,255,255,0.2)', marginTop: 6 },
 });
