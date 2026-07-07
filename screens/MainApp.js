@@ -227,7 +227,8 @@ export default function MainApp({
   const [favorites, setFavorites] = useState([]);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
-  const [applyPoints, setApplyPoints] = useState(false);
+  const [rewards, setRewards] = useState([]);
+  const [showRewards, setShowRewards] = useState(false);
   const [pickupTime, setPickupTime] = useState('');
   const [orderNote, setOrderNote] = useState('');
   const [notifications, setNotifications] = useState([]);
@@ -267,6 +268,7 @@ export default function MainApp({
     loadNotifications();
     fetchLoyaltyPoints();
     fetchOffers();
+    fetchRewards();
   }, []);
 
   // Auto-set category when vehicle is selected
@@ -299,6 +301,68 @@ export default function MainApp({
       const d = await r.json();
       setOffers(d.offers || []);
     } catch {}
+  };
+
+  const fetchRewards = async () => {
+    try {
+      const r = await fetch(`${API_URL}/rewards`);
+      const d = await r.json();
+      setRewards(d.rewards || []);
+    } catch {}
+  };
+
+  const redeemReward = async (reward) => {
+    if (loyaltyPoints < reward.points_required) {
+      Alert.alert(
+        'Not Enough Points',
+        `You need ${reward.points_required} points for this reward.\nYou have ${loyaltyPoints} points.\n\nKeep ordering to earn more!`
+      );
+      return;
+    }
+    Alert.alert(
+      'Redeem Reward?',
+      `Redeem ${reward.name} for ${reward.points_required} points?\n\nYou will have ${loyaltyPoints - reward.points_required} points remaining.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Redeem!',
+          onPress: async () => {
+            try {
+              const r = await fetch(`${API_URL}/loyalty/${customer?.phone}/redeem-reward`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reward_id: reward.id, points: reward.points_required })
+              });
+              const d = await r.json();
+              if (d.success) {
+                setLoyaltyPoints(p => p - reward.points_required);
+                setShowConfetti(true);
+                setTimeout(() => setShowConfetti(false), 3000);
+                Alert.alert(
+                  'Reward Redeemed!',
+                  `Collect your FREE ${reward.name} at the store!\n\nShow this message to staff:\n"Reward Redemption - ${customer?.name} - ${reward.name}"`,
+                  [
+                    {
+                      text: 'Send WhatsApp',
+                      onPress: () => Linking.openURL(
+                        `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(
+                          `Reward Redemption Request\nCustomer: ${customer?.name}\nPhone: ${customer?.phone}\nReward: ${reward.name}\nPoints Used: ${reward.points_required}`
+                        )}`
+                      )
+                    },
+                    { text: 'OK' }
+                  ]
+                );
+              } else {
+                Alert.alert('Error', d.error || 'Could not redeem. Try again.');
+              }
+            } catch {
+              Alert.alert('Error', 'Check internet and try again.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const fetchLoyaltyPoints = async () => {
@@ -470,7 +534,7 @@ export default function MainApp({
       `${itemsList}\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `💰 *Total: ₹${finalTotal.toFixed(0)}*\n` +
-      (applyPoints ? `🎁 Points Used: ₹${pointsDiscount.toFixed(0)}\n` : '') +
+
       `━━━━━━━━━━━━━━━━━━━━`;
 
     Alert.alert(
@@ -569,10 +633,7 @@ export default function MainApp({
       (i.mechanic_price || i.selling_price) * i.qty
     ), 0
   );
-  const pointsDiscount = applyPoints
-    ? Math.min(loyaltyPoints, Math.floor(cartTotal * 0.5))
-    : 0;
-  const finalTotal = Math.max(0, cartTotal - pointsDiscount);
+  const finalTotal = cartTotal;
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const unread = notifications.filter(n => !n.read).length;
 
@@ -1612,6 +1673,99 @@ export default function MainApp({
       </View>
 
       {/* BOTTOM NAV */}
+      {/* REWARDS MODAL */}
+      <Modal visible={showRewards} animationType="slide"
+        onRequestClose={() => setShowRewards(false)}>
+        <SafeAreaView style={[s.container, { backgroundColor: '#07111F' }]}>
+          <StatusBar barStyle="light-content" />
+          <View style={s.rewardsHeader}>
+            <TouchableOpacity onPress={() => setShowRewards(false)}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <Text style={s.rewardsHeaderTitle}>My Rewards</Text>
+            <View style={s.rewardsPointsBadge}>
+              <Text style={s.rewardsPointsText}>{loyaltyPoints} pts</Text>
+            </View>
+          </View>
+
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            {/* POINTS SUMMARY */}
+            <View style={s.rewardsSummaryCard}>
+              <Ionicons name="star" size={32} color="#C9A84C" />
+              <Text style={s.rewardsSummaryPoints}>{loyaltyPoints}</Text>
+              <Text style={s.rewardsSummaryLabel}>LOYALTY POINTS</Text>
+              <Text style={s.rewardsSummaryHint}>
+                Earn 1 point for every ₹50 spent
+              </Text>
+            </View>
+
+            <Text style={s.rewardsSectionTitle}>AVAILABLE REWARDS</Text>
+
+            {rewards.length === 0 ? (
+              <View style={s.rewardsEmpty}>
+                <Ionicons name="gift-outline" size={48} color="rgba(255,255,255,0.2)" />
+                <Text style={s.rewardsEmptyText}>No rewards available yet</Text>
+                <Text style={s.rewardsEmptySub}>Check back soon!</Text>
+              </View>
+            ) : (
+              rewards.map(reward => {
+                const canRedeem = loyaltyPoints >= reward.points_required;
+                return (
+                  <View key={reward.id} style={[s.rewardCard, !canRedeem && s.rewardCardLocked]}>
+                    <View style={s.rewardCardLeft}>
+                      <View style={[s.rewardIconBox, { backgroundColor: canRedeem ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.05)' }]}>
+                        <Ionicons name="gift" size={24} color={canRedeem ? '#C9A84C' : 'rgba(255,255,255,0.3)'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.rewardName, !canRedeem && { color: 'rgba(255,255,255,0.4)' }]}>
+                          {reward.name}
+                        </Text>
+                        {reward.description ? (
+                          <Text style={s.rewardDesc}>{reward.description}</Text>
+                        ) : null}
+                        <View style={s.rewardPointsRow}>
+                          <Ionicons name="star" size={12} color="#C9A84C" />
+                          <Text style={s.rewardPoints}>{reward.points_required} points</Text>
+                          {!canRedeem && (
+                            <Text style={s.rewardNeed}>
+                              (need {reward.points_required - loyaltyPoints} more)
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={[s.redeemBtn, !canRedeem && s.redeemBtnLocked]}
+                      onPress={() => redeemReward(reward)}
+                      disabled={!canRedeem}>
+                      <Text style={[s.redeemBtnText, !canRedeem && { color: 'rgba(255,255,255,0.3)' }]}>
+                        {canRedeem ? 'Redeem' : 'Locked'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })
+            )}
+
+            <View style={s.rewardsHowCard}>
+              <Text style={s.rewardsHowTitle}>How to Earn Points</Text>
+              {[
+                'Every ₹50 you spend = 1 point',
+                'Points never expire',
+                'Redeem for free products at store',
+                'Show redemption message to staff',
+              ].map((tip, i) => (
+                <View key={i} style={s.rewardsHowRow}>
+                  <Ionicons name="checkmark-circle" size={14} color="#C9A84C" />
+                  <Text style={s.rewardsHowText}>{tip}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       {/* WHATSAPP FLOATING BUTTON */}
       <TouchableOpacity
         style={s.whatsappFab}
@@ -2151,6 +2305,72 @@ const os = StyleSheet.create({
 // ── MAIN STYLES ──
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#07111F' },
+
+  // Rewards
+  rewardsCartBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(201,168,76,0.08)', borderRadius: 14,
+    padding: 14, marginBottom: 12, borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.25)',
+  },
+  rewardsCartBtnLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rewardsCartBtnTitle: { fontSize: 14, fontWeight: '700', color: '#C9A84C', marginBottom: 2 },
+  rewardsCartBtnSub: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
+  rewardsHeader: {
+    flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(201,168,76,0.15)',
+  },
+  rewardsHeaderTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: '#fff' },
+  rewardsPointsBadge: {
+    backgroundColor: 'rgba(201,168,76,0.15)', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.3)',
+  },
+  rewardsPointsText: { fontSize: 13, fontWeight: '800', color: '#C9A84C' },
+  rewardsSummaryCard: {
+    backgroundColor: '#0D1F3C', borderRadius: 20, padding: 24,
+    alignItems: 'center', marginBottom: 20, gap: 6,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)',
+  },
+  rewardsSummaryPoints: { fontSize: 48, fontWeight: '900', color: '#C9A84C' },
+  rewardsSummaryLabel: { fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: 2 },
+  rewardsSummaryHint: { fontSize: 12, color: 'rgba(255,255,255,0.3)', marginTop: 4 },
+  rewardsSectionTitle: {
+    fontSize: 11, color: 'rgba(201,168,76,0.7)',
+    letterSpacing: 2.5, fontWeight: '700', marginBottom: 12,
+  },
+  rewardCard: {
+    backgroundColor: '#0D1F3C', borderRadius: 16, padding: 16,
+    flexDirection: 'row', alignItems: 'center', marginBottom: 10,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)',
+  },
+  rewardCardLocked: { borderColor: 'rgba(255,255,255,0.06)', opacity: 0.7 },
+  rewardCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  rewardIconBox: {
+    width: 48, height: 48, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rewardName: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  rewardDesc: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 4 },
+  rewardPointsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  rewardPoints: { fontSize: 12, color: '#C9A84C', fontWeight: '700' },
+  rewardNeed: { fontSize: 11, color: 'rgba(255,255,255,0.3)' },
+  redeemBtn: {
+    backgroundColor: '#C9A84C', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8,
+  },
+  redeemBtnLocked: { backgroundColor: 'rgba(255,255,255,0.06)' },
+  redeemBtnText: { color: '#07111F', fontWeight: '800', fontSize: 13 },
+  rewardsEmpty: { alignItems: 'center', padding: 40, gap: 10 },
+  rewardsEmptyText: { fontSize: 15, color: 'rgba(255,255,255,0.4)', fontWeight: '600' },
+  rewardsEmptySub: { fontSize: 13, color: 'rgba(255,255,255,0.2)' },
+  rewardsHowCard: {
+    backgroundColor: '#0D1F3C', borderRadius: 14, padding: 16,
+    marginTop: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+  },
+  rewardsHowTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 12 },
+  rewardsHowRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  rewardsHowText: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
 
   // WhatsApp FAB
   whatsappFab: {
