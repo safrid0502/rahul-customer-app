@@ -5,11 +5,12 @@
 
 import { useState, useEffect } from 'react';
 import {
-  StyleSheet, Text, View, TouchableOpacity,
+  StyleSheet, Text, View, TouchableOpacity, Image,
   SafeAreaView, StatusBar, ScrollView, TextInput,
   Alert, ActivityIndicator, Switch
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -36,7 +37,8 @@ export default function CustomerProfileScreen({ customer, vehicle, loyaltyPoints
   const [prefOffers, setPrefOffers]       = useState(true);
 
   // ── UI STATE ──
-  const [saving, setSaving]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [profileImage, setProfileImage] = useState(null);
   const [editing, setEditing]     = useState(false);
   const [orderCount, setOrderCount] = useState(0);
   const [totalSpent, setTotalSpent] = useState(0);
@@ -65,6 +67,7 @@ export default function CustomerProfileScreen({ customer, vehicle, loyaltyPoints
         setWhatsapp(p.whatsapp || customer?.phone || '');
         setBirthday(p.birthday || '');
         setNotes(p.notes || '');
+        setProfileImage(p.profileImage || null);
         setPrefWhatsapp(p.prefWhatsapp ?? true);
         setPrefNotifs(p.prefNotifs ?? true);
         setPrefOffers(p.prefOffers ?? true);
@@ -83,6 +86,27 @@ export default function CustomerProfileScreen({ customer, vehicle, loyaltyPoints
   };
 
   // ── SAVE PROFILE ──
+  const pickProfileImage = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow photo access');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        setProfileImage(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Error', 'Could not pick image');
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) { Alert.alert('❌', 'Name is required'); return; }
     if (!phone.trim()) { Alert.alert('❌', 'Phone is required'); return; }
@@ -102,6 +126,7 @@ export default function CustomerProfileScreen({ customer, vehicle, loyaltyPoints
         whatsapp: whatsapp.trim(),
         birthday: birthday.trim(),
         notes: notes.trim(),
+        profileImage: profileImage,
         prefWhatsapp,
         prefNotifs,
         prefOffers,
@@ -166,11 +191,18 @@ export default function CustomerProfileScreen({ customer, vehicle, loyaltyPoints
         <LinearGradient
           colors={['#1A1A2E', '#0E0E1C']}
           style={s.summaryCard}>
-          <View style={s.avatarBox}>
-            <Text style={s.avatar}>
-              {(name || customer?.name || '?')[0].toUpperCase()}
-            </Text>
-          </View>
+          <TouchableOpacity style={s.avatarBox} onPress={pickProfileImage}>
+            {profileImage ? (
+              <Image source={{ uri: profileImage }} style={s.avatarImage} />
+            ) : (
+              <Text style={s.avatar}>
+                {(name || customer?.name || '?')[0].toUpperCase()}
+              </Text>
+            )}
+            <View style={s.avatarEditBadge}>
+              <Text style={s.avatarEditText}>Edit</Text>
+            </View>
+          </TouchableOpacity>
           <Text style={s.summaryName}>{name || customer?.name}</Text>
           <Text style={s.summaryPhone}>📱 +91 {phone || customer?.phone}</Text>
           {vehicle && (
@@ -301,10 +333,7 @@ export default function CustomerProfileScreen({ customer, vehicle, loyaltyPoints
             ))}
           </View>
 
-          <View style={s.storeUpiBox}>
-            <Text style={s.storeUpiLabel}>Store UPI ID:</Text>
-            <Text style={s.storeUpiValue}>rahulautospares@paytm</Text>
-          </View>
+
         </View>
 
         {/* ── PREFERENCES ── */}
@@ -473,6 +502,13 @@ const s = StyleSheet.create({
     alignItems: 'center', borderWidth: 1,
     borderColor: 'rgba(79,110,247,0.2)',
   },
+  avatarImage: { width: 72, height: 72, borderRadius: 36 },
+  avatarEditBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    backgroundColor: '#C9A84C', borderRadius: 10,
+    paddingHorizontal: 6, paddingVertical: 2,
+  },
+  avatarEditText: { fontSize: 9, fontWeight: 'bold', color: '#07111F' },
   avatarBox: {
     width: 72, height: 72, borderRadius: 36,
     backgroundColor: '#4F6EF7', alignItems: 'center',

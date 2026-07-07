@@ -82,7 +82,7 @@ export default function FlashDealBanner({ deal, onPress }) {
   const seconds = timeLeft % 60;
   const pad = (n) => String(n).padStart(2, '0');
 
-  if (!ready || timeLeft <= 0) return null;
+  if (!deal || !ready || timeLeft <= 0) return null;
 
   return (
     <Animated.View style={[
@@ -92,7 +92,7 @@ export default function FlashDealBanner({ deal, onPress }) {
       <TouchableOpacity style={styles.banner} onPress={onPress} activeOpacity={0.9}>
         {/* LEFT */}
         <View style={styles.left}>
-          <Text style={styles.fireEmoji}>⚡</Text>
+          <Text style={styles.fireEmoji}>SALE</Text>
           <View>
             <Text style={styles.flashLabel}>FLASH DEAL</Text>
             <Text style={styles.dealName} numberOfLines={1}>
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,71,87,0.5)',
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  fireEmoji: { fontSize: 32 },
+  fireEmoji: { fontSize: 24 },
   flashLabel: {
     fontSize: 10, color: '#FF4757', fontWeight: 'bold',
     letterSpacing: 2, marginBottom: 2,

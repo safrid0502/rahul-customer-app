@@ -7,6 +7,7 @@ import {
   Animated, Dimensions, PanResponder
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -94,11 +95,11 @@ const getSkuForVehicle = (v) => {
 // ── BOTTOM NAV ──
 function BottomNav({ active, onChange, cartCount, notifCount }) {
   const tabs = [
-    { id: 'home', icon: '🏠', label: 'Home' },
-    { id: 'browse', icon: '🔍', label: 'Browse' },
-    { id: 'cart', icon: '🛒', label: 'Cart', badge: cartCount },
-    { id: 'orders', icon: '📋', label: 'Orders' },
-    { id: 'store', icon: '🏪', label: 'Store' },
+    { id: 'home',    icon: 'home-outline',       label: 'Home' },
+    { id: 'browse',  icon: 'search-outline',      label: 'Browse' },
+    { id: 'cart',    icon: 'cart-outline',        label: 'Cart', badge: cartCount },
+    { id: 'orders',  icon: 'receipt-outline',     label: 'Orders' },
+    { id: 'store',   icon: 'storefront-outline',  label: 'Store' },
   ];
   return (
     <View style={navStyles.bar}>
@@ -111,7 +112,11 @@ function BottomNav({ active, onChange, cartCount, notifCount }) {
           }}
         >
           <View style={navStyles.iconWrap}>
-            <Text style={navStyles.icon}>{tab.icon}</Text>
+            <Ionicons
+              name={active === tab.id ? tab.icon.replace('-outline','') : tab.icon}
+              size={24}
+              color={active === tab.id ? '#C9A84C' : 'rgba(255,255,255,0.35)'}
+            />
             {tab.badge > 0 && (
               <View style={navStyles.badge}>
                 <Text style={navStyles.badgeText}>{tab.badge}</Text>
@@ -233,6 +238,7 @@ export default function MainApp({
 
   // ── GEN Z FEATURES STATE ──
   const [showProfile, setShowProfile] = useState(false);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showBikeHealth, setShowBikeHealth] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [flashDeal] = useState({
@@ -417,6 +423,23 @@ export default function MainApp({
     });
   };
 
+
+  const reorderItems = async (order) => {
+    try {
+      const r = await fetch(`${API_URL}/orders/${order.id}/items`);
+      const d = await r.json();
+      const items = d.items || [];
+      items.forEach(item => {
+        const product = products.find(p => p.sku === item.sku);
+        if (product) addToCart(product, item.quantity || item.qty || 1);
+      });
+      setTab('cart');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert('Error', 'Could not load order items');
+    }
+  };
+
   const placeOrder = async () => {
     if (!pickupTime) {
       Alert.alert('⏰', 'Please select pickup time!');
@@ -575,7 +598,7 @@ export default function MainApp({
       action: () => setTab('browse')
     },
     {
-      icon: '📋', label: 'Track Orders',
+      icon: 'receipt-outline', label: 'Track Orders',
       labelTe: 'ఆర్డర్ ట్రాక్',
       color: '#4ADE80', bg: 'rgba(74,222,128,0.15)',
       action: () => setTab('orders')
@@ -587,10 +610,22 @@ export default function MainApp({
       action: () => setShowBikeHealth(true)
     },
     {
-      icon: '🏪', label: 'Store Info',
+      icon: 'storefront-outline', label: 'Store Info',
       labelTe: 'స్టోర్ వివరాలు',
       color: '#00B4D8', bg: 'rgba(0,180,216,0.15)',
       action: () => setTab('store')
+    },
+    {
+      icon: 'bookmark-outline', label: 'Saved Parts',
+      labelTe: 'సేవ్ చేసినవి',
+      color: '#EF4444', bg: 'rgba(239,68,68,0.15)',
+      action: () => setTab('favorites')
+    },
+    {
+      icon: 'chatbubble-ellipses-outline', label: 'WhatsApp Us',
+      labelTe: 'వాట్సాప్',
+      color: '#25D366', bg: 'rgba(37,211,102,0.15)',
+      action: () => Linking.openURL(`https://wa.me/${WHATSAPP}?text=Hi! I need help with spare parts`)
     },
   ];
 
@@ -676,45 +711,117 @@ export default function MainApp({
       {/* BROWSE FILTERS */}
       {tab === 'browse' && (
         <>
+          {/* SEARCH BOX */}
           <View style={s.searchBox}>
-            <Text style={s.searchIcon}>🔍</Text>
+            <Ionicons name="search" size={18} color="rgba(255,255,255,0.4)" />
             <TextInput
               style={s.searchInput}
-              placeholder="Search parts... / వెతకండి"
+              placeholder="Search parts by name or SKU..."
               placeholderTextColor="rgba(255,255,255,0.2)"
               value={search}
               onChangeText={setSearch}
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => setSearch('')}>
-                <Text style={s.clearBtn}>✕</Text>
+                <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.3)" />
               </TouchableOpacity>
             )}
           </View>
-          <ScrollView
-            horizontal showsHorizontalScrollIndicator={false}
-            style={s.catScroll}
-            contentContainerStyle={s.catRow}
-          >
-            {CATEGORIES.map(c => (
-              <TouchableOpacity
-                key={c.id}
-                style={[s.catChip,
-                  category === c.id && s.catChipActive]}
-                onPress={() => {
-                  Haptics.impactAsync(
-                    Haptics.ImpactFeedbackStyle.Light
-                  );
-                  setCategory(c.id);
-                }}
-              >
-                <Text style={[s.catChipText,
-                  category === c.id && s.catChipTextActive]}>
-                  {c.label}
-                </Text>
+
+          {/* CATEGORY DROPDOWN */}
+          <View style={s.dropdownWrapper}>
+            <TouchableOpacity
+              style={s.dropdownTrigger}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowCategoryDropdown(!showCategoryDropdown);
+              }}>
+              <Ionicons name="filter" size={16} color="#C9A84C" />
+              <Text style={s.dropdownTriggerText}>
+                {category === 'all'
+                  ? 'All Parts'
+                  : CATEGORIES.find(c => c.id === category)?.label || 'Select Category'}
+              </Text>
+              <Ionicons
+                name={showCategoryDropdown ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color="rgba(255,255,255,0.4)"
+              />
+            </TouchableOpacity>
+
+            {/* DROPDOWN LIST */}
+            {showCategoryDropdown && (
+              <View style={s.dropdownList}>
+                <ScrollView
+                  style={{ maxHeight: 300 }}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}>
+                  {[
+                    { id: 'all', label: 'All Parts', group: '' },
+                    { id: 'OIL', label: 'Engine Oils', group: 'GENERAL' },
+                    { id: 'HRO-SPL', label: 'Hero Splendor+', group: 'HERO' },
+                    { id: 'HRO-HFD', label: 'Hero HF Deluxe', group: 'HERO' },
+                    { id: 'HRO-PAS', label: 'Hero Passion Pro', group: 'HERO' },
+                    { id: 'HRO-GLA', label: 'Hero Glamour', group: 'HERO' },
+                    { id: 'HRO-XTR', label: 'Hero Xtreme 160R', group: 'HERO' },
+                    { id: 'HND-CBS', label: 'Honda CB Shine', group: 'HONDA' },
+                    { id: 'HND-ACT', label: 'Honda Activa', group: 'HONDA' },
+                    { id: 'HND-SP1', label: 'Honda SP 125', group: 'HONDA' },
+                    { id: 'HND-DYG', label: 'Honda Dream Yuga', group: 'HONDA' },
+                    { id: 'TVS-APR', label: 'TVS Apache', group: 'TVS' },
+                    { id: 'TVS-JPT', label: 'TVS Jupiter', group: 'TVS' },
+                    { id: 'BAJ-P15', label: 'Bajaj Pulsar 150', group: 'BAJAJ' },
+                    { id: 'BAJ-PLT', label: 'Bajaj Platina', group: 'BAJAJ' },
+                  ].reduce((acc, item) => {
+                    // Group header
+                    if (item.group && (!acc.length || acc[acc.length-1].group !== item.group)) {
+                      acc.push({ isHeader: true, group: item.group });
+                    }
+                    acc.push(item);
+                    return acc;
+                  }, []).map((item, i) => {
+                    if (item.isHeader) {
+                      return (
+                        <View key={`header-${item.group}`} style={s.dropdownGroupHeader}>
+                          <Text style={s.dropdownGroupLabel}>{item.group}</Text>
+                        </View>
+                      );
+                    }
+                    const isSelected = category === item.id;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[s.dropdownItem, isSelected && s.dropdownItemActive]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setCategory(item.id);
+                          setShowCategoryDropdown(false);
+                        }}>
+                        <Text style={[s.dropdownItemText, isSelected && s.dropdownItemTextActive]}>
+                          {item.label}
+                        </Text>
+                        {isSelected && (
+                          <Ionicons name="checkmark" size={16} color="#C9A84C" />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+
+          {/* ACTIVE FILTER BADGE */}
+          {category !== 'all' && (
+            <View style={s.activeFilterRow}>
+              <Text style={s.activeFilterText}>
+                Showing: {CATEGORIES.find(c => c.id === category)?.label || category}
+              </Text>
+              <TouchableOpacity onPress={() => setCategory('all')}>
+                <Text style={s.clearFilterBtn}>Clear ✕</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </View>
+          )}
         </>
       )}
 
@@ -729,7 +836,7 @@ export default function MainApp({
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={onRefresh}
-                tintColor="#4F6EF7"
+                tintColor="#C9A84C"
                 colors={['#4F6EF7']}
               />
             }
@@ -741,7 +848,7 @@ export default function MainApp({
                   Hello, {customer?.name?.split(' ')[0]}
                 </Text>
                 <Text style={s.greetSub}>
-                  What do you need today?
+                  Find parts for your bike
                 </Text>
                 {vehicle && (
                   <TouchableOpacity
@@ -815,34 +922,32 @@ export default function MainApp({
               </View>
             </TouchableOpacity>
 
-            {/* FLASH DEAL */}
-            <FlashDealBanner
-              deal={flashDeal}
-              onPress={() => setTab('browse')}
-            />
-
-            {/* OFFERS */}
+            {/* ACTIVE DEALS — Only show if real deals exist */}
             {offers.length > 0 && (
-              <ScrollView
-                horizontal showsHorizontalScrollIndicator={false}
-                contentContainerStyle={s.offersRow}
-              >
-                {offers.map(o => (
-                  <View key={o.id} style={s.offerCard}>
-                    <Text style={s.offerEmoji}>{o.emoji}</Text>
-                    <View style={{ flex: 1 }}>
+              <View style={s.dealsSection}>
+                <View style={s.dealsSectionHeader}>
+                  <Text style={s.dealsSectionTitle}>TODAY'S OFFERS</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingBottom: 4 }}>
+                  {offers.map(o => (
+                    <TouchableOpacity key={o.id} style={s.offerCard}
+                      onPress={() => setTab('browse')} activeOpacity={0.8}>
+                      <View style={s.offerBadgeTop}>
+                        <Text style={s.offerBadgeTopText}>
+                          {o.discount_percent > 0 ? `${o.discount_percent}% OFF` : 'OFFER'}
+                        </Text>
+                      </View>
+                      <Ionicons name="pricetag" size={18} color="#C9A84C" style={{ marginBottom: 6 }} />
                       <Text style={s.offerTitle}>{o.title}</Text>
-                      {o.discount_percent > 0 && (
-                        <View style={s.offerBadge}>
-                          <Text style={s.offerBadgeText}>
-                            {o.discount_percent}% OFF
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+                      {o.description ? (
+                        <Text style={s.offerDesc} numberOfLines={2}>{o.description}</Text>
+                      ) : null}
+                      <Text style={s.offerShopNow}>Shop Now →</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
             )}
 
             {/* QUICK ACTIONS — 6 GRID */}
@@ -984,6 +1089,33 @@ export default function MainApp({
               </TouchableOpacity>
             </View>
 
+            {/* RECENTLY ORDERED */}
+            {recentlyViewed.length > 0 && (
+              <View>
+                <View style={s.sectionHeader}>
+                  <Text style={s.sectionTitle}>Recently Viewed</Text>
+                  <TouchableOpacity onPress={() => setRecentlyViewed([])}>
+                    <Text style={s.seeAll}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.hScroll}>
+                  {recentlyViewed.slice(0, 6).map(item => (
+                    <TouchableOpacity key={item.id} style={s.miniCard}
+                      onPress={() => openProduct(item)} activeOpacity={0.8}>
+                      <View style={[s.miniCardIconBox, { backgroundColor: getPartLabel(item.sku).bg }]}>
+                        <Text style={[s.miniCardIconText, { color: getPartLabel(item.sku).color }]}>
+                          {getPartLabel(item.sku).label}
+                        </Text>
+                      </View>
+                      <Text style={s.miniCardName} numberOfLines={2}>{item.name_en}</Text>
+                      <Text style={s.miniCardPrice}>₹{item.selling_price}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             <View style={{ height: 100 }} />
           </ScrollView>
         )}
@@ -1006,7 +1138,7 @@ export default function MainApp({
                 <RefreshControl
                   refreshing={refreshing}
                   onRefresh={onRefresh}
-                  tintColor="#4F6EF7"
+                  tintColor="#C9A84C"
                 />
               }
               ListHeaderComponent={() => (
@@ -1113,10 +1245,9 @@ export default function MainApp({
         {tab === 'favorites' && (
           favProducts.length === 0 ? (
             <View style={s.emptyBox}>
-              <Text style={{ fontSize: 48, marginBottom: 12 }}>
-                🤍
-              </Text>
-              <Text style={s.emptyText}>No favorites yet!</Text>
+              <Ionicons name="heart-outline" size={56} color="rgba(255,255,255,0.2)" style={{ marginBottom: 12 }} />
+              <Text style={s.emptyText}>No saved parts yet</Text>
+              <Text style={s.emptySubText}>Tap the heart on any part to save it</Text>
               <TouchableOpacity
                 style={s.browseBtn}
                 onPress={() => setTab('browse')}
@@ -1151,7 +1282,7 @@ export default function MainApp({
                     <TouchableOpacity
                       onPress={() => toggleFavorite(item.id)}
                     >
-                      <Text style={{ fontSize: 18 }}>❤️</Text>
+                      <Ionicons name="heart" size={18} color="#EF4444" />
                     </TouchableOpacity>
                     <Text style={s.productMrp}>₹{item.mrp}</Text>
                     <Text style={s.productPrice}>
@@ -1176,9 +1307,7 @@ export default function MainApp({
         {tab === 'cart' && (
           cart.length === 0 ? (
             <View style={s.emptyBox}>
-              <Text style={{ fontSize: 48, marginBottom: 12 }}>
-                🛒
-              </Text>
+              <Ionicons name="cart-outline" size={56} color="rgba(255,255,255,0.2)" style={{ marginBottom: 12 }} />
               <Text style={s.emptyText}>Cart is empty!</Text>
               <TouchableOpacity
                 style={s.browseBtn}
@@ -1413,7 +1542,9 @@ export default function MainApp({
             </TouchableOpacity>
 
             <View style={s.storeCard}>
-              <Text style={s.storeIcon}>🏪</Text>
+              <View style={s.storeIconBox}>
+                <Ionicons name="storefront" size={28} color="#C9A84C" />
+              </View>
               <Text style={s.storeName}>
                 New Rahul Auto Spares
               </Text>
@@ -1421,55 +1552,69 @@ export default function MainApp({
                 Telugu Peta, Nandyal · 518501
               </Text>
             </View>
+            <View style={{ backgroundColor: '#0D1F3C', borderRadius: 16, marginBottom: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
             {[
               {
-                label: '📞 Phone', value: '08514-244944',
+                label: 'Phone', icon: 'call', value: '08514-244944',
                 action: () => Linking.openURL('tel:08514244944')
               },
               {
-                label: '💬 WhatsApp', value: '+91 6300281504',
-                action: () => Linking.openURL(
-                  `https://wa.me/${WHATSAPP}`
-                )
+                label: 'WhatsApp', icon: 'logo-whatsapp', value: '+91 6300281504',
+                action: () => Linking.openURL(`https://wa.me/${WHATSAPP}`)
               },
-              { label: '🕐 Mon–Sat', value: '10AM – 9PM' },
-              { label: '🕐 Sunday', value: '10AM – 3PM' },
+              { label: 'Mon–Sat', icon: 'time', value: '10AM – 9PM' },
+              { label: 'Sunday', icon: 'time', value: '10AM – 3PM' },
             ].map((r, i) => (
               <TouchableOpacity
                 key={i} style={s.storeRow}
                 onPress={r.action}
                 disabled={!r.action}
               >
-                <Text style={s.storeRowLabel}>{r.label}</Text>
-                <Text style={[s.storeRowValue,
-                  r.action && { color: '#4ADE80' }]}>
+                <View style={s.storeRowLeft}>
+                  <Ionicons name={r.icon} size={16} color="#C9A84C" style={{ width: 22 }} />
+                  <Text style={s.storeRowLabel}>{r.label}</Text>
+                </View>
+                <Text style={[s.storeRowValue, r.action && { color: '#4ADE80' }]}>
                   {r.value}
                 </Text>
               </TouchableOpacity>
             ))}
-
-            <View style={s.storeFeatures}>
-              <Text style={s.storeFeatTitle}>
-                ⭐ Features
-              </Text>
-              
-              <TouchableOpacity
-                style={s.storeFeatureBtn}
-                onPress={() => setShowBikeHealth(true)}
-              >
-                <Text style={s.storeFeatureBtnIcon}>🏍️</Text>
-                <Text style={s.storeFeatureBtnText}>
-                  Free Bike Health Check
-                </Text>
-                <Text style={s.storeFeatureBtnArrow}>→</Text>
-              </TouchableOpacity>
-              
             </View>
+
+            {/* MORE SERVICES */}
+            <View style={s.servicesCard}>
+              <Text style={s.servicesTitle}>OUR SERVICES</Text>
+              {[
+                { icon: 'build', label: 'Bike Health Check', sub: 'Free diagnosis for your bike', action: () => setShowBikeHealth(true) },
+                { icon: 'location', label: 'Find Us on Map', sub: 'Telugu Peta, Nandyal', action: () => Linking.openURL('https://maps.google.com/?q=New+Rahul+Auto+Spares+Nandyal') },
+                { icon: 'chatbubble', label: 'WhatsApp Support', sub: 'Chat with us anytime', action: () => Linking.openURL(`https://wa.me/${WHATSAPP}?text=Hi, I need help with spare parts`) },
+                { icon: 'star', label: 'Rate Our App', sub: 'Share your feedback', action: () => {} },
+              ].map((item, i) => (
+                <TouchableOpacity key={i} style={s.serviceRow} onPress={item.action}>
+                  <View style={s.serviceIconBox}>
+                    <Ionicons name={item.icon} size={20} color="#C9A84C" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.serviceLabel}>{item.label}</Text>
+                    <Text style={s.serviceSub}>{item.sub}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ height: 30 }} />
           </ScrollView>
         )}
       </View>
 
       {/* BOTTOM NAV */}
+      {/* WHATSAPP FLOATING BUTTON */}
+      <TouchableOpacity
+        style={s.whatsappFab}
+        onPress={() => Linking.openURL(`https://wa.me/${WHATSAPP}?text=Hi! I need help with spare parts`)}>
+        <Ionicons name="logo-whatsapp" size={28} color="#fff" />
+      </TouchableOpacity>
+
       <BottomNav
         active={tab}
         onChange={setTab}
@@ -1477,21 +1622,6 @@ export default function MainApp({
         notifCount={unread}
       />
 
-      {/* FLOATING WHATSAPP */}
-      <TouchableOpacity
-        style={s.floatingWA}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          Linking.openURL(
-            `https://wa.me/${WHATSAPP}?text=` +
-            encodeURIComponent(
-              `Hi! I need help. Customer: ${customer?.name}`
-            )
-          );
-        }}
-      >
-        <Text style={s.floatingWAIcon}>💬</Text>
-      </TouchableOpacity>
 
       {/* ══ PRODUCT DETAIL MODAL ══ */}
       <Modal
@@ -1799,13 +1929,14 @@ function OrdersTab({ customer }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('active');
+  const [orderSearch, setOrderSearch] = useState('');
 
   const API_URL = 'https://rahul-auto-spares-backend.onrender.com';
 
   const STATUS_STEPS = [
-    { key: 'new', label: 'Placed', icon: '📋', color: '#4F6EF7' },
+    { key: 'new', label: 'Placed', icon: '○', color: '#4F6EF7' },
     { key: 'packing', label: 'Packing', icon: '📦', color: '#FFC107' },
-    { key: 'ready', label: 'Ready!', icon: '✅', color: '#4ADE80' },
+    { key: 'ready', label: 'Ready', icon: '◉', color: '#4ADE80' },
     { key: 'collected', label: 'Done', icon: '🏁', color: 'rgba(255,255,255,0.3)' },
   ];
 
@@ -1888,7 +2019,7 @@ function OrdersTab({ customer }) {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#4F6EF7"
+              tintColor="#C9A84C"
             />
           }
         >
@@ -2017,6 +2148,54 @@ const os = StyleSheet.create({
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#07111F' },
 
+  // WhatsApp FAB
+  whatsappFab: {
+    position: 'absolute', bottom: 80, right: 16,
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: '#25D366',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#25D366', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 10,
+    zIndex: 999,
+  },
+
+  // Deals section
+  dealsSection: { marginBottom: 8 },
+  dealsSectionHeader: {
+    paddingHorizontal: 16, paddingBottom: 10,
+    flexDirection: 'row', alignItems: 'center',
+  },
+  dealsSectionTitle: {
+    fontSize: 11, color: 'rgba(201,168,76,0.8)',
+    letterSpacing: 2.5, fontWeight: '800',
+  },
+  offerBadgeTop: {
+    position: 'absolute', top: 8, right: 8,
+    backgroundColor: '#C9A84C', borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2,
+  },
+  offerBadgeTopText: { fontSize: 9, fontWeight: '800', color: '#07111F' },
+  offerShopNow: { fontSize: 11, color: '#C9A84C', fontWeight: '700', marginTop: 6 },
+
+  // Stock warnings
+  stockBadgeLow: { backgroundColor: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.3)' },
+  stockTextLow: { color: '#F59E0B', fontWeight: '700' },
+
+  // Product image
+  productImage: {
+    width: 52, height: 52, borderRadius: 8,
+    backgroundColor: '#0D1F3C',
+  },
+
+  // Share button
+  shareBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12,
+    padding: 14, marginBottom: 10, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)', justifyContent: 'center',
+  },
+  shareBtnText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
+
   // Order notes
   noteBox: {
     backgroundColor: '#0D1F3C', borderRadius: 12, padding: 14,
@@ -2072,7 +2251,47 @@ const s = StyleSheet.create({
   notifBadgeText: { color: '#fff', fontSize: 8, fontWeight: 'bold' },
   exitBtn: { backgroundColor: 'rgba(255,71,87,0.1)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(255,71,87,0.2)' },
   exitText: { color: '#FF4757', fontSize: 11, fontWeight: 'bold' },
-  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0D1F3C', margin: 12, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: 10 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0D1F3C', margin: 12, marginBottom: 8, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: 10 },
+  dropdownWrapper: { marginHorizontal: 12, marginBottom: 8, zIndex: 999 },
+  dropdownTrigger: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#0D1F3C', borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.3)',
+  },
+  dropdownTriggerText: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '600' },
+  dropdownList: {
+    position: 'absolute', top: 52, left: 0, right: 0,
+    backgroundColor: '#0D1F3C', borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4, shadowRadius: 12, elevation: 10,
+    zIndex: 1000,
+  },
+  dropdownGroupHeader: {
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  dropdownGroupLabel: {
+    fontSize: 10, color: 'rgba(201,168,76,0.7)',
+    fontWeight: '800', letterSpacing: 2,
+  },
+  dropdownItem: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  dropdownItemActive: { backgroundColor: 'rgba(201,168,76,0.08)' },
+  dropdownItemText: { fontSize: 14, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
+  dropdownItemTextActive: { color: '#fff', fontWeight: '700' },
+  activeFilterRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginHorizontal: 12, marginBottom: 6,
+    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: 'rgba(201,168,76,0.06)', borderRadius: 8,
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)',
+  },
+  activeFilterText: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
+  clearFilterBtn: { fontSize: 12, color: '#C9A84C', fontWeight: '700' },
   searchIcon: { fontSize: 16 },
   searchInput: { flex: 1, color: '#fff', fontSize: 14 },
   clearBtn: { color: 'rgba(255,255,255,0.3)', fontSize: 16 },
@@ -2216,9 +2435,39 @@ const s = StyleSheet.create({
   profileBtnName: { fontSize: 15, fontWeight: 'bold', color: '#fff', marginBottom: 2 },
   profileBtnPhone: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
   profileBtnArrow: { fontSize: 11, color: '#4F6EF7', fontWeight: 'bold' },
+  storeIconBox: {
+    width: 52, height: 52, borderRadius: 14,
+    backgroundColor: 'rgba(201,168,76,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8, borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.2)',
+  },
+  storeRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  servicesCard: {
+    backgroundColor: '#0D1F3C', borderRadius: 16, padding: 16,
+    marginTop: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  },
+  servicesTitle: {
+    fontSize: 11, color: 'rgba(201,168,76,0.7)',
+    letterSpacing: 2, fontWeight: '700', marginBottom: 14,
+  },
+  serviceRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  serviceIconBox: {
+    width: 40, height: 40, borderRadius: 10,
+    backgroundColor: 'rgba(201,168,76,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(201,168,76,0.15)',
+  },
+  serviceLabel: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 2 },
+  serviceSub: { fontSize: 11, color: 'rgba(255,255,255,0.4)' },
+  emptySubText: { fontSize: 12, color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 4 },
   storeCard: { backgroundColor: '#0E0E1C', borderRadius: 16, padding: 20, alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
   storeIcon: { fontSize: 48, marginBottom: 10 },
-  storeName: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
+  storeName: { fontSize: 17, fontWeight: '800', color: '#fff', marginBottom: 4, letterSpacing: 0.5 },
   storeAddr: { fontSize: 13, color: 'rgba(255,255,255,0.4)' },
   storeRow: { backgroundColor: '#0E0E1C', borderRadius: 14, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(79,110,247,0.15)' },
   storeRowLabel: { fontSize: 14, color: 'rgba(255,255,255,0.5)' },

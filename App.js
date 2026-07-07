@@ -183,11 +183,15 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.multiRemove(['customer_profile', 'vehicle_profile']);
+    await AsyncStorage.multiRemove([
+      'customer_profile', 'vehicle_profile',
+      'vehicles_list', 'mechanic_profile'
+    ]);
     setCustomer(null);
     setVehicle(null);
+    setVehicles([]);
     setIsMechanic(false);
-    setScreen('welcome');
+    setScreen('login');
   };
 
   const handleVehicleAdd = () => {
@@ -217,9 +221,7 @@ export default function App() {
     return <OnboardingScreen onDone={() => setShowOnboarding(false)} />;
   }
 
-  if (screen === 'welcome') {
-    return <WelcomeScreen onLogin={() => setScreen('login')} onDone={() => setScreen('login')} />;
-  }
+  // Welcome screen skipped - go straight to login
 
   if (screen === 'login') {
     return <LoginScreen onCustomerLogin={handleLogin} onBack={() => setScreen('welcome')} />;
