@@ -242,6 +242,7 @@ export default function MainApp({
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showBikeHealth, setShowBikeHealth] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [orderConfirmed, setOrderConfirmed] = useState(null);
   const [flashDeal] = useState({
     name: 'Engine Oil 1L',
     discount: '15% OFF',
@@ -910,10 +911,10 @@ export default function MainApp({
             <View style={s.greeting}>
               <View style={{ flex: 1 }}>
                 <Text style={s.greetName}>
-                  Hello, {customer?.name?.split(' ')[0]}
+                  Hey, {customer?.name?.split(' ')[0]} 👋
                 </Text>
                 <Text style={s.greetSub}>
-                  Find parts for your bike
+                  What part are you looking for today?
                 </Text>
                 {vehicle && (
                   <TouchableOpacity
@@ -1766,6 +1767,63 @@ export default function MainApp({
         </SafeAreaView>
       </Modal>
 
+      {/* ORDER CONFIRMATION MODAL */}
+      {orderConfirmed && (
+        <Modal visible={!!orderConfirmed} animationType="slide"
+          onRequestClose={() => setOrderConfirmed(null)}>
+          <SafeAreaView style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}>
+            <StatusBar barStyle="light-content" />
+            <View style={s.confirmBox}>
+              <View style={s.confirmIconBox}>
+                <Ionicons name="checkmark-circle" size={72} color="#4ADE80" />
+              </View>
+              <Text style={s.confirmTitle}>Order Confirmed!</Text>
+              <Text style={s.confirmOrderId}>
+                {orderConfirmed?.custom_id || `RAS-${orderConfirmed?.id}`}
+              </Text>
+              <Text style={s.confirmHint}>Show this order ID when collecting</Text>
+
+              <View style={s.confirmDetails}>
+                <View style={s.confirmRow}>
+                  <Ionicons name="time-outline" size={16} color="rgba(255,255,255,0.4)" />
+                  <Text style={s.confirmRowText}>Pickup: {pickupTime}</Text>
+                </View>
+                <View style={s.confirmRow}>
+                  <Ionicons name="cash-outline" size={16} color="rgba(255,255,255,0.4)" />
+                  <Text style={s.confirmRowText}>Pay at store: ₹{cartTotal.toFixed(0)}</Text>
+                </View>
+                <View style={s.confirmRow}>
+                  <Ionicons name="location-outline" size={16} color="rgba(255,255,255,0.4)" />
+                  <Text style={s.confirmRowText}>Telugu Peta, Nandyal</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity style={s.confirmWaBtn}
+                onPress={() => {
+                  const msg =
+                    `Order Confirmed!\n` +
+                    `Order ID: ${orderConfirmed?.custom_id || `RAS-${orderConfirmed?.id}`}\n` +
+                    `Amount: ₹${cartTotal.toFixed(0)}\n` +
+                    `Pickup: ${pickupTime}\n\n` +
+                    `New Rahul Auto Spares · Nandyal`;
+                  Linking.openURL(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`);
+                }}>
+                <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+                <Text style={s.confirmWaBtnText}>Share on WhatsApp</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={s.confirmDoneBtn}
+                onPress={() => {
+                  setOrderConfirmed(null);
+                  setTab('orders');
+                }}>
+                <Text style={s.confirmDoneBtnText}>View My Orders</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </Modal>
+      )}
+
       {/* WHATSAPP FLOATING BUTTON */}
       <TouchableOpacity
         style={s.whatsappFab}
@@ -2305,6 +2363,38 @@ const os = StyleSheet.create({
 // ── MAIN STYLES ──
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#07111F' },
+
+  // Order confirmation
+  confirmBox: {
+    backgroundColor: '#0D1F3C', borderRadius: 24, padding: 28,
+    margin: 24, alignItems: 'center', borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.2)',
+  },
+  confirmIconBox: { marginBottom: 16 },
+  confirmTitle: { fontSize: 26, fontWeight: '900', color: '#fff', marginBottom: 8 },
+  confirmOrderId: {
+    fontSize: 32, fontWeight: '900', color: '#4ADE80',
+    marginBottom: 6, letterSpacing: 2,
+  },
+  confirmHint: { fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 24 },
+  confirmDetails: {
+    width: '100%', backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 14, padding: 16, gap: 12, marginBottom: 20,
+  },
+  confirmRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  confirmRowText: { fontSize: 14, color: 'rgba(255,255,255,0.6)' },
+  confirmWaBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#25D366', borderRadius: 14,
+    padding: 16, width: '100%', justifyContent: 'center', marginBottom: 10,
+  },
+  confirmWaBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  confirmDoneBtn: {
+    borderRadius: 14, padding: 14, width: '100%',
+    alignItems: 'center', borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  confirmDoneBtnText: { color: 'rgba(255,255,255,0.5)', fontWeight: '700', fontSize: 14 },
 
   // Rewards
   rewardsCartBtn: {
