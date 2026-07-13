@@ -15,14 +15,27 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#07111F"
       },
-      "package": "com.rahulautospares.customer"
+      "package": "com.rahulautospares.customer",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "useNextNotificationsApi": true
     },
     "extra": {
       "eas": {
         "projectId": "02693dd5-74df-488e-ba61-7a16ab7b8965"
       }
     },
-    "plugins": [],
+    "plugins": [
+      "expo-notifications",
+      "expo-image-picker"
+    ],
     "icon": "./assets/icon.png"
   }
 }
