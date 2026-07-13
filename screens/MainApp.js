@@ -43,18 +43,18 @@ const getPartLabel = (sku) => {
 const getIcon = (sku) => getPartLabel(sku).label;
 
 const CATEGORIES = [
-  { id: 'all',     label: '🔩 All Parts' },
-  { id: 'OIL',     label: '🛢️ Oils' },
-  { id: 'HRO-SPL', label: '⚙️ Splendor' },
-  { id: 'HRO-PAS', label: '🏍️ Passion' },
-  { id: 'HRO-GLA', label: '✨ Glamour' },
-  { id: 'HRO-HFD', label: '🔧 HF Deluxe' },
-  { id: 'HND-CBS', label: '🔴 CB Shine' },
-  { id: 'HND-ACT', label: '🛵 Activa' },
-  { id: 'HND-DYG', label: '🟠 Dream Yuga' },
-  { id: 'TVS-APR', label: '🏁 Apache' },
-  { id: 'BAJ-P15', label: '⚡ Pulsar 150' },
-  { id: 'BAJ-PLT', label: '🔵 Platina' },
+  { id: 'all',     label: 'All Parts' },
+  { id: 'OIL',     label: 'Engine Oils' },
+  { id: 'HRO-SPL', label: 'Hero Splendor' },
+  { id: 'HRO-PAS', label: 'Hero Passion' },
+  { id: 'HRO-GLA', label: 'Hero Glamour' },
+  { id: 'HRO-HFD', label: 'Hero HF Deluxe' },
+  { id: 'HND-CBS', label: 'Honda CB Shine' },
+  { id: 'HND-ACT', label: 'Honda Activa' },
+  { id: 'HND-DYG', label: 'Honda Dream Yuga' },
+  { id: 'TVS-APR', label: 'TVS Apache' },
+  { id: 'BAJ-P15', label: 'Bajaj Pulsar 150' },
+  { id: 'BAJ-PLT', label: 'Bajaj Platina' },
 ];
 
 const getSkuForVehicle = (v) => {
@@ -243,6 +243,10 @@ export default function MainApp({
   const [showBikeHealth, setShowBikeHealth] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [orderConfirmed, setOrderConfirmed] = useState(null);
+  const [showPartRequest, setShowPartRequest] = useState(false);
+  const [partRequestName, setPartRequestName] = useState('');
+  const [partRequestBike, setPartRequestBike] = useState('');
+  const [showCancelConfirm, setShowCancelConfirm] = useState(null);
   const [flashDeal] = useState({
     name: 'Engine Oil 1L',
     discount: '15% OFF',
@@ -877,6 +881,13 @@ export default function MainApp({
             )}
           </View>
 
+          {/* PART REQUEST BUTTON */}
+          <TouchableOpacity style={s.partRequestBtn}
+            onPress={() => setShowPartRequest(true)}>
+            <Ionicons name="help-circle-outline" size={16} color="#C9A84C" />
+            <Text style={s.partRequestBtnText}>Can't find your part? Request it →</Text>
+          </TouchableOpacity>
+
           {/* ACTIVE FILTER BADGE */}
           {category !== 'all' && (
             <View style={s.activeFilterRow}>
@@ -1084,6 +1095,9 @@ export default function MainApp({
                   <Text style={s.miniCardName} numberOfLines={2}>
                     {item.name_en}
                   </Text>
+                  {item.mrp > item.selling_price && (
+                    <Text style={s.saveBadge}>Save ₹{(item.mrp - item.selling_price).toFixed(0)}</Text>
+                  )}
                   <Text style={s.miniCardMrp}>₹{item.mrp}</Text>
                   <Text style={s.miniCardPrice}>
                     ₹{getPrice(item)}
@@ -1604,7 +1618,7 @@ export default function MainApp({
                 <Text style={s.profileBtnName}>{customer?.name}</Text>
                 <Text style={s.profileBtnPhone}>+91 {customer?.phone}</Text>
               </View>
-              <Text style={s.profileBtnArrow}>✏️ Edit Profile →</Text>
+              <Ionicons name="create-outline" size={18} color="rgba(255,255,255,0.4)" />
             </TouchableOpacity>
 
             <View style={s.storeCard}>
@@ -1674,6 +1688,56 @@ export default function MainApp({
       </View>
 
       {/* BOTTOM NAV */}
+      {/* PART REQUEST MODAL */}
+      <Modal visible={showPartRequest} animationType="slide"
+        onRequestClose={() => setShowPartRequest(false)}>
+        <SafeAreaView style={[s.container]}>
+          <StatusBar barStyle="light-content" />
+          <View style={s.rewardsHeader}>
+            <TouchableOpacity onPress={() => setShowPartRequest(false)}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <Text style={s.rewardsHeaderTitle}>Request a Part</Text>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <View style={s.partRequestCard}>
+              <Ionicons name="construct" size={40} color="#C9A84C" style={{ marginBottom: 12 }} />
+              <Text style={s.partRequestTitle}>Can't find what you need?</Text>
+              <Text style={s.partRequestSub}>
+                Tell us what part you need and we'll check availability for you!
+              </Text>
+            </View>
+
+            <Text style={s.inputLabel}>PART NAME *</Text>
+            <View style={s.inputBox}>
+              <Ionicons name="cube-outline" size={18} color="rgba(255,255,255,0.3)" />
+              <TextInput style={s.input}
+                placeholder="e.g. Clutch Plate, Brake Cable..."
+                placeholderTextColor="rgba(255,255,255,0.2)"
+                value={partRequestName} onChangeText={setPartRequestName} />
+            </View>
+
+            <Text style={s.inputLabel}>YOUR BIKE (optional)</Text>
+            <View style={s.inputBox}>
+              <Ionicons name="bicycle-outline" size={18} color="rgba(255,255,255,0.3)" />
+              <TextInput style={s.input}
+                placeholder={vehicle ? `${vehicle.brand} ${vehicle.model}` : "e.g. Hero Splendor 2020"}
+                placeholderTextColor="rgba(255,255,255,0.2)"
+                value={partRequestBike} onChangeText={setPartRequestBike} />
+            </View>
+
+            <TouchableOpacity style={s.loginBtn} onPress={requestPart}>
+              <Ionicons name="logo-whatsapp" size={20} color="#07111F" />
+              <Text style={s.loginBtnText}>Send Request via WhatsApp</Text>
+            </TouchableOpacity>
+
+            <Text style={s.privacyNote}>
+              We will check availability and call you back within 2 hours during store hours.
+            </Text>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       {/* REWARDS MODAL */}
       <Modal visible={showRewards} animationType="slide"
         onRequestClose={() => setShowRewards(false)}>
@@ -2140,7 +2204,7 @@ export default function MainApp({
 }
 
 // ── ORDERS TAB COMPONENT ──
-function OrdersTab({ customer }) {
+function OrdersTab({ customer, onCancelOrder }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
