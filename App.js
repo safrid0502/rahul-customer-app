@@ -29,7 +29,7 @@ Sentry.init({
 });
 
 const API_URL = 'https://rahul-auto-spares-backend.onrender.com';
-const API_SECRET_KEY = 'zFWqAraDGYhsNzIe76vXOm0hifitH1bxLmQ6S-8qeN8';
+const API_SECRET_KEY = 'c0jEoY0TLL_mFc_jyD_LhtlgPMK3_FBkL53RvRoypEw';
 
 const originalFetch = global.fetch;
 global.fetch = (url, options = {}) => {
