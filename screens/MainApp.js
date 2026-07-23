@@ -227,6 +227,8 @@ export default function MainApp({
   const [favorites, setFavorites] = useState([]);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const placingOrderRef = useRef(false);
+  const [applyPoints, setApplyPoints] = useState(false);
   const [rewards, setRewards] = useState([]);
   const [showRewards, setShowRewards] = useState(false);
   const [pickupTime, setPickupTime] = useState('');
@@ -244,6 +246,10 @@ export default function MainApp({
   const [showConfetti, setShowConfetti] = useState(false);
   const [orderConfirmed, setOrderConfirmed] = useState(null);
   const [showPartRequest, setShowPartRequest] = useState(false);
+  const [showStaffPicker, setShowStaffPicker] = useState(false);
+  const [staffContacts, setStaffContacts] = useState([]);
+  const [loadingStaffContacts, setLoadingStaffContacts] = useState(false);
+  const [pendingWhatsAppMessage, setPendingWhatsAppMessage] = useState('');
   const [partRequestName, setPartRequestName] = useState('');
   const [partRequestBike, setPartRequestBike] = useState('');
   const [showCancelConfirm, setShowCancelConfirm] = useState(null);
@@ -510,6 +516,9 @@ export default function MainApp({
   };
 
   const placeOrder = async () => {
+    if (placingOrderRef.current) return;
+    placingOrderRef.current = true;
+
     if (!pickupTime) {
       Alert.alert('Pickup Time Required', 'Please enter when you will collect the order.\n\nExample: Today 5PM or Tomorrow 11AM');
       return;
@@ -543,83 +552,139 @@ export default function MainApp({
       `━━━━━━━━━━━━━━━━━━━━`;
 
     Alert.alert(
-      '🎉 Order Confirmed!',
+      '🎉 Confirm Your Order',
       `Total: ₹${finalTotal.toFixed(0)}\nPickup: ${pickupTime}`,
       [{
         text: 'OK 🙏',
         onPress: async () => {
-          setShowConfetti(true);
-          setTimeout(() => setShowConfetti(false), 3500);
+          try {
+            const r = await fetch(`${API_URL}/orders`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                pickup_time: pickupTime,
+                total_amount: finalTotal,
+                customer_name: customer?.name,
+                customer_phone: customer?.phone,
+                items: cart
+              })
+            });
+            const d = await r.json();
 
-          if (applyPoints && pointsDiscount > 0) {
-            await fetch(
-              `${API_URL}/loyalty/${customer?.phone}/redeem`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ points: pointsDiscount })
-              }
-            ).catch(() => {});
-            setLoyaltyPoints(p =>
-              Math.max(0, p - pointsDiscount)
-            );
-          }
+            if (d.error) {
+              placingOrderRef.current = false;
+              const friendlyMsg = d.error === 'Insufficient stock'
+                ? 'Some items in your cart are no longer available in the quantity requested. Please review your cart and try again.'
+                : (d.error || 'Something went wrong. Please try again.');
+              Alert.alert('Could Not Place Order', friendlyMsg, [{ text: 'OK' }]);
+              return;
+            }
 
-          const earned = Math.floor(finalTotal / 50);
-          if (earned > 0) {
-            await fetch(
-              `${API_URL}/loyalty/${customer?.phone}/add`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ points: earned })
-              }
-            ).catch(() => {});
-            setLoyaltyPoints(p => p + earned);
-          }
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 3500);
 
-          fetch(`${API_URL}/orders`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              pickup_time: pickupTime,
-              total_amount: finalTotal,
-              customer_name: customer?.name,
-              customer_phone: customer?.phone,
-              items: cart
-            })
-          }).then(r => r.json()).then(async d => {
+            if (applyPoints && pointsDiscount > 0) {
+              fetch(
+                `${API_URL}/loyalty/${customer?.phone}/redeem`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ points: pointsDiscount })
+                }
+              ).catch(() => {});
+              setLoyaltyPoints(p => Math.max(0, p - pointsDiscount));
+            }
+
+            const earned = Math.floor(finalTotal / 50);
+            if (earned > 0) {
+              fetch(
+                `${API_URL}/loyalty/${customer?.phone}/add`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ points: earned })
+                }
+              ).catch(() => {});
+              setLoyaltyPoints(p => p + earned);
+            }
+
+            placingOrderRef.current = false;
             await addNotification({
               type: 'order',
               title: '✅ Order Placed!',
               body: `${d.custom_id} · ₹${finalTotal.toFixed(0)}`
             });
-          }).catch(() => {});
 
-          const countStr =
-            await AsyncStorage.getItem('order_count');
-          const count = parseInt(countStr || '0') + 1;
-          await AsyncStorage.setItem(
-            'order_count', count.toString()
-          );
-          const rated =
-            await AsyncStorage.getItem('has_rated');
-          if (count === 3 && !rated) {
-            setTimeout(() => setShowRating(true), 4000);
+            const countStr = await AsyncStorage.getItem('order_count');
+            const count = parseInt(countStr || '0') + 1;
+            await AsyncStorage.setItem('order_count', count.toString());
+            const rated = await AsyncStorage.getItem('has_rated');
+            if (count === 3 && !rated) {
+              setTimeout(() => setShowRating(true), 4000);
+            }
+
+            const enc = encodeURIComponent(msg);
+            Linking.openURL(`https://wa.me/${WHATSAPP}?text=${enc}`);
+
+            setCart([]);
+            setOrderNote('');
+            setPickupTime('');
+            setApplyPoints(false);
+            setTab('orders');
+          } catch (err) {
+            placingOrderRef.current = false;
+            Alert.alert(
+              'No Internet Connection',
+              'Could not reach the server. Your cart has been saved - please check your connection and try again.',
+              [{ text: 'OK' }]
+            );
           }
-
-          const enc = encodeURIComponent(msg);
-          Linking.openURL(
-            `https://wa.me/${WHATSAPP}?text=${enc}`
-          );
-          setCart([]);
-          setOrderNote('');
-          setPickupTime('');
-          setApplyPoints(false);
-          setTab('orders');
         }
       }]
     );
+  };
+
+  const fetchStaffContacts = async () => {
+    setLoadingStaffContacts(true);
+    try {
+      const r = await fetch(`${API_URL}/staff`);
+      const d = await r.json();
+      setStaffContacts(d.staff || []);
+    } catch {
+      setStaffContacts([]);
+    }
+    setLoadingStaffContacts(false);
+  };
+
+  const openStaffPicker = (message) => {
+    setPendingWhatsAppMessage(message);
+    setShowStaffPicker(true);
+    fetchStaffContacts();
+  };
+
+  const sendToStaffMember = (phone) => {
+    if (!phone) {
+      Alert.alert('No phone number', 'This staff member has no phone number on file.');
+      return;
+    }
+    const cleanPhone = phone.replace(/\D/g, '');
+    const fullNumber = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    Linking.openURL(`https://wa.me/${fullNumber}?text=${encodeURIComponent(pendingWhatsAppMessage)}`);
+    setShowStaffPicker(false);
+  };
+
+  const requestPart = () => {
+    if (!partRequestName.trim()) {
+      Alert.alert('Required', 'Please enter the part name');
+      return;
+    }
+    const bikeInfo = partRequestBike.trim()
+      || (vehicle ? `${vehicle.brand} ${vehicle.model}` : 'Not specified');
+    const message = `Hi, I'd like to request a part:\n\nPart: ${partRequestName}\nBike: ${bikeInfo}`;
+    setShowPartRequest(false);
+    openStaffPicker(message);
+    setPartRequestName('');
+    setPartRequestBike('');
   };
 
   const handleLogout = () => {
@@ -638,7 +703,10 @@ export default function MainApp({
       (i.mechanic_price || i.selling_price) * i.qty
     ), 0
   );
-  const finalTotal = cartTotal;
+  const pointsDiscount = applyPoints
+    ? Math.min(loyaltyPoints, Math.floor(cartTotal * 0.5))
+    : 0;
+  const finalTotal = Math.max(0, cartTotal - pointsDiscount);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const unread = notifications.filter(n => !n.read).length;
 
@@ -1667,7 +1735,7 @@ export default function MainApp({
               {[
                 { icon: 'build', label: 'Bike Health Check', sub: 'Free diagnosis for your bike', action: () => setShowBikeHealth(true) },
                 { icon: 'location', label: 'Find Us on Map', sub: 'Telugu Peta, Nandyal', action: () => Linking.openURL('https://maps.google.com/?q=New+Rahul+Auto+Spares+Nandyal') },
-                { icon: 'chatbubble', label: 'WhatsApp Support', sub: 'Chat with us anytime', action: () => Linking.openURL(`https://wa.me/${WHATSAPP}?text=Hi, I need help with spare parts`) },
+                { icon: 'chatbubble', label: 'WhatsApp Support', sub: 'Chat with us anytime', action: () => openStaffPicker('Hi, I need help with spare parts') },
                 { icon: 'star', label: 'Rate Our App', sub: 'Share your feedback', action: () => {} },
               ].map((item, i) => (
                 <TouchableOpacity key={i} style={s.serviceRow} onPress={item.action}>
@@ -1688,6 +1756,47 @@ export default function MainApp({
       </View>
 
       {/* BOTTOM NAV */}
+      {/* STAFF PICKER MODAL */}
+      <Modal visible={showStaffPicker} animationType="slide"
+        onRequestClose={() => setShowStaffPicker(false)}>
+        <SafeAreaView style={[s.container]}>
+          <StatusBar barStyle="light-content" />
+          <View style={s.rewardsHeader}>
+            <TouchableOpacity onPress={() => setShowStaffPicker(false)}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <Text style={s.rewardsHeaderTitle}>Choose Who to Message</Text>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            {loadingStaffContacts ? (
+              <Text style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginTop: 30 }}>
+                Loading staff...
+              </Text>
+            ) : staffContacts.length === 0 ? (
+              <Text style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginTop: 30 }}>
+                No staff available right now.
+              </Text>
+            ) : (
+              staffContacts.map(member => (
+                <TouchableOpacity key={member.id} style={s.storeRow}
+                  onPress={() => sendToStaffMember(member.phone)}>
+                  <View style={s.storeRowLeft}>
+                    <Ionicons name="logo-whatsapp" size={18} color="#4ADE80" style={{ width: 22 }} />
+                    <View>
+                      <Text style={s.storeRowLabel}>{member.name}</Text>
+                      <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>
+                        {member.role?.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" />
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       {/* PART REQUEST MODAL */}
       <Modal visible={showPartRequest} animationType="slide"
         onRequestClose={() => setShowPartRequest(false)}>
@@ -2226,6 +2335,13 @@ function OrdersTab({ customer, onCancelOrder }) {
   };
 
   useEffect(() => { fetchOrders(); }, []);
+
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      fetchOrders();
+    }, 20000);
+    return () => clearInterval(pollInterval);
+  }, []);
 
   const fetchOrders = async () => {
     try {

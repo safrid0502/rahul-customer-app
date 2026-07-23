@@ -39,3 +39,12 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+.env.local
+*.backup*
+fix_*.py
+add_push_debug_logging.py
+eslint-check.config.mjs
+*.backup*
+fix_*.py
+eslint-check.config.mjs
